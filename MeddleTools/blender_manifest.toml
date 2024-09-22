@@ -1,7 +1,7 @@
-schema_version = "1.0.0"
+schema_version = "0.0.1"
 
 id = "meddle_tools"
-version = "1.0.0"
+version = "0.0.1"
 name = "Meddle Tools"
 tagline = "This is another extension"
 maintainer = "PassiveModding"
