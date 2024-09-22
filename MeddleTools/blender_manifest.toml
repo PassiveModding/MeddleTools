@@ -1,4 +1,4 @@
-schema_version = "0.0.2"
+schema_version = "0.0.1"
 
 id = "meddle_tools"
 version = "0.0.2"

@@ -30,7 +30,7 @@ jobs:
           - name: Update blender_manifest.toml
             working-directory: MeddleTools/
             run: |
-                sed -i "s/version = \".*\"/version = \"${{ github.ref_name }}\"/g" blender_manifest.toml
+                sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
 
           - name: Zip Blender Plugin
             working-directory: MeddleTools/
