@@ -267,11 +267,10 @@ class MEDDLE_OT_stain_housing(Operator):
                 break
 
         if power_node is None:
-            power_node = mat.node_tree.nodes.new('ShaderNodeMath')
-            power_node.operation = 'POWER'
+            power_node = mat.node_tree.nodes.new('ShaderNodeGamma')
             power_node.label = "POWER"
 
-        mat.node_tree.links.new(rgb_node.outputs['Color'], power_node.inputs['Value'])
+        mat.node_tree.links.new(rgb_node.outputs['Color'], power_node.inputs['Color'])
         power_node.inputs[1].default_value = 2.0
 
         # mix the color with "BASE COLOR" node
@@ -299,7 +298,7 @@ class MEDDLE_OT_stain_housing(Operator):
         mix_color.inputs['Fac'].default_value = 1.0
         mat.node_tree.links.new(mix_color.outputs['Color'], principled_bsdf.inputs['Base Color'])
         mat.node_tree.links.new(base_color.outputs['Color'], mix_color.inputs['Color1'])
-        mat.node_tree.links.new(power_node.outputs['Value'], mix_color.inputs['Color2'])
+        mat.node_tree.links.new(power_node.outputs['Color'], mix_color.inputs['Color2'])
         mat.node_tree.links.new(base_color.outputs['Alpha'], mix_color.inputs['Fac'])
 
         # organize nodes
