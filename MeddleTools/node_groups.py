@@ -218,7 +218,7 @@ class ColorSetMapping:
             colorRampA = material.nodes.new('ShaderNodeValToRGB')
             colorRampA.name = self.ramp_name_a
             colorRampA.location = (0, 0)
-            colorRampA.color_ramp.interpolation = 'EASE'
+            colorRampA.color_ramp.interpolation = 'CONSTANT'
         else:
             colorRampA = material.nodes[self.ramp_name_a]
             
@@ -227,7 +227,7 @@ class ColorSetMapping:
             colorRampB = material.nodes.new('ShaderNodeValToRGB')
             colorRampB.name = self.ramp_name_b
             colorRampB.location = (0, 0)
-            colorRampB.color_ramp.interpolation = 'EASE'
+            colorRampB.color_ramp.interpolation = 'CONSTANT'
         else:
             colorRampB = material.nodes[self.ramp_name_b]
             
@@ -246,7 +246,7 @@ class ColorSetMapping:
                 odds.append(row)
                 
         for i, row in enumerate(evens):
-            pos = i / (len(evens) - 1)
+            pos = i / len(evens)
             if i == 0:
                 colorRampA.color_ramp.elements[0].position = pos
                 colorRampA.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
@@ -255,7 +255,7 @@ class ColorSetMapping:
                 element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
                 
         for i, row in enumerate(odds):
-            pos = i / (len(odds) - 1)
+            pos = i / len(odds)
             if i == 0:
                 colorRampB.color_ramp.elements[0].position = pos
                 colorRampB.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
