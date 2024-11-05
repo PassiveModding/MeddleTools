@@ -8,6 +8,7 @@ meddleFaceHairName = 'meddle face hair.shpk'
 meddleIrisName = 'meddle iris.shpk'
 meddleCharacterTattooName = 'meddle charactertattoo.shpk'
 meddleCharacterOcclusionName = 'meddle characterocclusion.shpk'
+meddleCharacterName = 'meddle character.shpk'
 meddleBgName = 'meddle bg.shpk'
 meddleBgColorChangeName = 'meddle bgcolorchange.shpk'
 
@@ -24,7 +25,8 @@ nodegroups: list[str] = [
     meddleCharacterTattooName,
     meddleCharacterOcclusionName,
     meddleBgName,
-    meddleBgColorChangeName
+    meddleBgColorChangeName,
+    meddleCharacterName
 ]
 
 class NodeGroup:
@@ -139,6 +141,135 @@ class FloatRgbMapping:
             
         groupNode.inputs[self.color_dest].default_value = value_arr            
             
+            
+class ColorSetMapping:
+    def __init__(self, property_name: str, id_texture_name: str, ramp_name_a: str, ramp_name_b: str, ramp_a_dest: str, ramp_b_dest:str, index_g_dest: str):
+        self.property_name = property_name
+        self.ramp_name_a = ramp_name_a
+        self.ramp_name_b = ramp_name_b
+        self.id_texture_name = id_texture_name
+        self.ramp_a_dest = ramp_a_dest
+        self.ramp_b_dest = ramp_b_dest
+        self.index_g_dest = index_g_dest
+        
+    def __repr__(self):
+        return f"ColorSetMapping({self.property_name})"
+    
+    def apply(self, material, groupNode, properties, directory, node_height):
+        if self.property_name not in properties:
+            print(f"Property {self.property_name} not found in material")
+            return node_height - 300
+        
+        colorSet = properties[self.property_name]
+        if colorSet is None:
+            print(f"Property {self.property_name} is None")
+            return node_height - 300
+        
+        if 'ColorTable' not in colorSet:
+            print(f"Property {self.property_name} does not contain ColorTable")
+            return node_height - 300
+       
+        colorSet = colorSet['ColorTable']
+       
+        if 'Rows' not in colorSet:
+            print(f"Property {self.property_name} does not contain Rows")
+            return node_height - 300
+        
+        rows = colorSet['Rows']
+        if len(rows) == 0:
+            print(f"Property {self.property_name} contains no Rows")
+            return node_height - 300
+        
+        texture = material.nodes.new('ShaderNodeTexImage')
+        
+
+        pathStr = properties[self.id_texture_name]
+        if pathStr is None or not isinstance(pathStr, str):
+            return node_height - 300
+        
+        if pathStr.endswith('.tex'):
+            pathStr = pathStr + '.png'
+        
+        # if image exists in scene, use that instead of loading from file
+        for img in bpy.data.images:
+            if img.filepath == directory + pathStr:
+                texture.image = img
+                break
+        else:        
+            if not path.exists(directory + pathStr):
+                print(f"Texture {directory + pathStr} not found")
+                return node_height - 300
+            texture.image = bpy.data.images.load(directory + pathStr)
+        texture.location = (-500, node_height)
+        texture.name = self.id_texture_name
+        texture.label = self.id_texture_name
+        texture.image.colorspace_settings.name = 'Non-Color'
+        
+        
+        # separate color
+        textureSeparate = material.nodes.new('ShaderNodeSeparateColor')
+        textureSeparate.location = (-300, node_height)
+        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])        
+        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
+        
+        # create colorRamp if it doesn't exist
+        colorRampA = None
+        if self.ramp_name_a not in material.nodes:
+            colorRampA = material.nodes.new('ShaderNodeValToRGB')
+            colorRampA.name = self.ramp_name_a
+            colorRampA.location = (0, 0)
+            colorRampA.color_ramp.interpolation = 'EASE'
+        else:
+            colorRampA = material.nodes[self.ramp_name_a]
+            
+        colorRampB = None
+        if self.ramp_name_b not in material.nodes:
+            colorRampB = material.nodes.new('ShaderNodeValToRGB')
+            colorRampB.name = self.ramp_name_b
+            colorRampB.location = (0, 0)
+            colorRampB.color_ramp.interpolation = 'EASE'
+        else:
+            colorRampB = material.nodes[self.ramp_name_b]
+            
+        # clear existing elements, leaving last one
+        while len(colorRampA.color_ramp.elements) > 1:
+            colorRampA.color_ramp.elements.remove(colorRampA.color_ramp.elements[0])
+        while len(colorRampB.color_ramp.elements) > 1:
+            colorRampB.color_ramp.elements.remove(colorRampB.color_ramp.elements[0])
+        
+        odds = []
+        evens = []
+        for i, row in enumerate(rows):
+            if i % 2 == 0:
+                evens.append(row)
+            else:
+                odds.append(row)
+                
+        for i, row in enumerate(evens):
+            pos = i / (len(evens) - 1)
+            if i == 0:
+                colorRampA.color_ramp.elements[0].position = pos
+                colorRampA.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+            else:
+                element = colorRampA.color_ramp.elements.new(pos)
+                element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+                
+        for i, row in enumerate(odds):
+            pos = i / (len(odds) - 1)
+            if i == 0:
+                colorRampB.color_ramp.elements[0].position = pos
+                colorRampB.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+            else:
+                element = colorRampB.color_ramp.elements.new(pos)
+                element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)  
+                
+        material.links.new(textureSeparate.outputs['Red'], colorRampA.inputs['Fac'])
+        material.links.new(textureSeparate.outputs['Red'], colorRampB.inputs['Fac'])
+        material.links.new(colorRampA.outputs['Color'], groupNode.inputs[self.ramp_a_dest])
+        material.links.new(colorRampB.outputs['Color'], groupNode.inputs[self.ramp_b_dest])
+        material.links.new(textureSeparate.outputs['Green'], groupNode.inputs[self.index_g_dest])   
+        
+        return node_height - 300
 
 class BoolToFloatMapping:
     def __init__(self, property_name: str, float_dest: str):
@@ -157,9 +288,9 @@ class BoolToFloatMapping:
 meddle_skin = NodeGroup(
     meddleSkinName,
     [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'Diffuse Texture', 'Diffuse Alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'Mask Texture', None, 'Non-Color'),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
         FloatRgbMapping('SkinColor', 'Skin Color'),
     ]
 )
@@ -167,9 +298,9 @@ meddle_skin = NodeGroup(
 meddle_face_skin = NodeGroup(
     meddleFaceSkinName,
     [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'Diffuse Texture', 'Diffuse Alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', 'Normal Alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'Mask Texture', None, 'Non-Color'),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
         FloatRgbMapping('SkinColor', 'Skin Color'),
         FloatRgbMapping('LipColor', 'Lip Color'),
         BoolToFloatMapping('LipStick', 'Lip Color Strength')
@@ -179,9 +310,9 @@ meddle_face_skin = NodeGroup(
 meddle_iris = NodeGroup(
     meddleIrisName,
     [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'Diffuse Texture', None, 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'Mask Texture', None, 'Non-Color'),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
         FloatRgbMapping('LeftIrisColor', 'Eye Color'),
         FloatRgbMapping('RightIrisColor', 'Second Eye Color')
     ]
@@ -190,8 +321,8 @@ meddle_iris = NodeGroup(
 meddle_hair = NodeGroup(
     meddleHairName,
     [
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', 'Normal Alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'Mask Texture', 'Mask Alpha', 'Non-Color'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
         FloatRgbMapping('MainColor', 'Hair Color'),
         FloatRgbMapping('MeshColor', 'Highlights Color'),
     ]
@@ -200,8 +331,8 @@ meddle_hair = NodeGroup(
 meddle_face_hair = NodeGroup(
     meddleFaceHairName,
     [
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', 'Normal Alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'Mask Texture', 'Mask Alpha', 'Non-Color'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
         FloatRgbMapping('MainColor', 'Hair Color'),
     ]
 )
@@ -209,14 +340,22 @@ meddle_face_hair = NodeGroup(
 meddle_character_occlusion = NodeGroup(
     meddleCharacterOcclusionName,
     [
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', None, 'Non-Color'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
     ]
 )
 
 meddle_character_tattoo = NodeGroup(
     meddleCharacterTattooName,
     [
-        PngMapping('g_SamplerNormal_PngCachePath', 'Normal Texture', 'Normal Alpha', 'Non-Color'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+    ]
+)
+
+meddle_character = NodeGroup(
+    meddleCharacterName,
+    [
+        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'TableA', 'TableB', 'color_a', 'color_b', 'id_mix'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
     ]
 )
 
@@ -281,6 +420,12 @@ def matchShader(mat):
     
     if shaderPackage == 'characterocclusion.shpk':
         return meddle_character_occlusion
+    
+    if shaderPackage == 'character.shpk':
+        return meddle_character
+    
+    if shaderPackage == 'characterlegacy.shpk':
+        return meddle_character
     
     if shaderPackage == 'bg.shpk':
         return meddle_bg

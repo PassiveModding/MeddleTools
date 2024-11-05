@@ -121,6 +121,8 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             mapping.apply(groupNode, properties)
         elif isinstance(mapping, node_groups.VertexPropertyMapping):
             node_height = mapping.apply(material, mesh, groupNode, node_height)
+        elif isinstance(mapping, node_groups.ColorSetMapping):
+            node_height = mapping.apply(material, groupNode, properties, directory, node_height)
                 
     return {'FINISHED'}
         
