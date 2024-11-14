@@ -217,7 +217,7 @@ class ColorSetMapping:
         if self.ramp_name_a not in material.nodes:
             colorRampA = material.nodes.new('ShaderNodeValToRGB')
             colorRampA.name = self.ramp_name_a
-            colorRampA.location = (0, 0)
+            colorRampA.location = (0, node_height)
             colorRampA.color_ramp.interpolation = 'CONSTANT'
         else:
             colorRampA = material.nodes[self.ramp_name_a]
@@ -226,7 +226,7 @@ class ColorSetMapping:
         if self.ramp_name_b not in material.nodes:
             colorRampB = material.nodes.new('ShaderNodeValToRGB')
             colorRampB.name = self.ramp_name_b
-            colorRampB.location = (0, 0)
+            colorRampB.location = (0, node_height - 300)
             colorRampB.color_ramp.interpolation = 'CONSTANT'
         else:
             colorRampB = material.nodes[self.ramp_name_b]
