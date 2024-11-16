@@ -420,7 +420,7 @@ def matchShader(mat):
     if shaderPackage == 'characterocclusion.shpk':
         return meddle_character_occlusion
     
-    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk':
+    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk':
         # check if GetValuesTextureType is 'Compatibility'
         if 'GetValuesTextureType' in properties:
             if properties['GetValuesTextureType'] == 'Compatibility':
