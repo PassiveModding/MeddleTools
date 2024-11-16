@@ -1,33 +1,6 @@
 import bpy
 from os import path
 
-meddleSkinName = 'meddle skin.shpk'
-meddleFaceSkinName = 'meddle face skin.shpk'
-meddleHairName = 'meddle hair.shpk'
-meddleFaceHairName = 'meddle face hair.shpk'
-meddleIrisName = 'meddle iris.shpk'
-meddleCharacterTattooName = 'meddle charactertattoo.shpk'
-meddleCharacterOcclusionName = 'meddle characterocclusion.shpk'
-meddleCharacterName = 'meddle character.shpk'
-meddleBgName = 'meddle bg.shpk'
-meddleBgColorChangeName = 'meddle bgcolorchange.shpk'
-
-pngMappings = 'PngMappings'
-floatRgbMappings = 'FloatRgbMappings'
-boolToFloatMappings = 'BoolToFloatMappings'
-
-nodegroups: list[str] = [
-    meddleSkinName,
-    meddleFaceSkinName,
-    meddleHairName,
-    meddleFaceHairName,
-    meddleIrisName,
-    meddleCharacterTattooName,
-    meddleCharacterOcclusionName,
-    meddleBgName,
-    meddleBgColorChangeName,
-    meddleCharacterName
-]
 
 class NodeGroup:
     def __init__(self, name: str, mapping_definitions: list):
@@ -139,8 +112,7 @@ class FloatRgbMapping:
         if len(value_arr) == 3:
             value_arr.append(1.0)
             
-        groupNode.inputs[self.color_dest].default_value = value_arr            
-            
+        groupNode.inputs[self.color_dest].default_value = value_arr                       
             
 class ColorSetMapping:
     def __init__(self, property_name: str, id_texture_name: str, ramp_name_a: str, ramp_name_b: str, ramp_a_dest: str, ramp_b_dest:str, index_g_dest: str):
@@ -286,7 +258,7 @@ class BoolToFloatMapping:
             groupNode.inputs[self.float_dest].default_value = 0.0
 
 meddle_skin = NodeGroup(
-    meddleSkinName,
+    'meddle skin.shpk',
     [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
@@ -296,7 +268,7 @@ meddle_skin = NodeGroup(
 )
 
 meddle_face_skin = NodeGroup(
-    meddleFaceSkinName,
+    'meddle face skin.shpk',
     [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
@@ -308,7 +280,7 @@ meddle_face_skin = NodeGroup(
 )
 
 meddle_iris = NodeGroup(
-    meddleIrisName,
+    'meddle iris.shpk',
     [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
@@ -319,7 +291,7 @@ meddle_iris = NodeGroup(
 )
 
 meddle_hair = NodeGroup(
-    meddleHairName,
+    'meddle hair.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
@@ -329,7 +301,7 @@ meddle_hair = NodeGroup(
 )
 
 meddle_face_hair = NodeGroup(
-    meddleFaceHairName,
+    'meddle face hair.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
@@ -338,29 +310,40 @@ meddle_face_hair = NodeGroup(
 )
 
 meddle_character_occlusion = NodeGroup(
-    meddleCharacterOcclusionName,
+    'meddle characterocclusion.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
     ]
 )
 
 meddle_character_tattoo = NodeGroup(
-    meddleCharacterTattooName,
+    'meddle charactertattoo.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
     ]
 )
 
 meddle_character = NodeGroup(
-    meddleCharacterName,
+    'meddle character.shpk',
     [
         ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'TableA', 'TableB', 'color_a', 'color_b', 'id_mix'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
 )
 
+meddle_character_compatibility = NodeGroup(
+    'meddle character_compatibility.shpk',
+    [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_Alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+    ]
+)
+
+
 meddle_bg = NodeGroup(
-    meddleBgName,
+    'meddle bg.shpk',
     [
         PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
         PngMapping('g_SamplerColorMap1', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB'),
@@ -373,7 +356,7 @@ meddle_bg = NodeGroup(
 )
 
 meddle_bg_colorchange = NodeGroup(
-    meddleBgColorChangeName,
+    'meddle bgcolorchange.shpk',
     [
         PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
         PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
@@ -381,6 +364,20 @@ meddle_bg_colorchange = NodeGroup(
         FloatRgbMapping('StainColor', 'StainColor'),
     ]
 )
+
+nodegroups: list[NodeGroup] = [
+    meddle_skin,
+    meddle_face_skin,
+    meddle_iris,
+    meddle_hair,
+    meddle_face_hair,
+    meddle_character_occlusion,
+    meddle_character_tattoo,
+    meddle_character,
+    meddle_bg,
+    meddle_bg_colorchange,
+    meddle_character_compatibility
+]
         
 def matchShader(mat):
     if mat is None:
@@ -388,6 +385,8 @@ def matchShader(mat):
     
     properties = mat
     shaderPackage = properties["ShaderPackage"]
+    
+    print(f"Matching shader {shaderPackage} on material {mat.name}")
     
     if shaderPackage is None:
         return None
@@ -421,10 +420,12 @@ def matchShader(mat):
     if shaderPackage == 'characterocclusion.shpk':
         return meddle_character_occlusion
     
-    if shaderPackage == 'character.shpk':
-        return meddle_character
-    
-    if shaderPackage == 'characterlegacy.shpk':
+    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk':
+        # check if GetValuesTextureType is 'Compatibility'
+        if 'GetValuesTextureType' in properties:
+            if properties['GetValuesTextureType'] == 'Compatibility':
+                return meddle_character_compatibility
+            
         return meddle_character
     
     if shaderPackage == 'bg.shpk':

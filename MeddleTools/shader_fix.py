@@ -60,7 +60,8 @@ class ShaderFixSelected(bpy.types.Operator):
                 continue
             
             for slot in obj.material_slots:
-                shpkMtrlFixer(obj, slot.material, self.directory)
+                if slot.material is not None:
+                    shpkMtrlFixer(obj, slot.material, self.directory)
             
         return {'FINISHED'}
     

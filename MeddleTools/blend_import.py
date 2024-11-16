@@ -7,14 +7,14 @@ def import_shaders():
     section = "\\NodeTree\\"
 
     for n in node_groups.nodegroups:
-        if n in bpy.data.node_groups:
-            print(n + " already in file")
+        if n.name in bpy.data.node_groups:
+            print(n.name + " already in file")
             continue
         
-        print("Appending " + n)
+        print("Appending " + n.name)
         bpy.ops.wm.append(
-            filepath = blendfile + section + n,
-            filename = n,
+            filepath = blendfile + section + n.name,
+            filename = n.name,
             directory = blendfile + section,
             do_reuse_local_id = True
         )
