@@ -335,7 +335,7 @@ meddle_character = NodeGroup(
 meddle_character_compatibility = NodeGroup(
     'meddle character_compatibility.shpk',
     [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_Alpha', 'sRGB'),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
