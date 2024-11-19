@@ -115,17 +115,40 @@ class FloatRgbMapping:
         groupNode.inputs[self.color_dest].default_value = value_arr                       
             
 class ColorSetMapping:
-    def __init__(self, property_name: str, id_texture_name: str, ramp_name_a: str, ramp_name_b: str, ramp_a_dest: str, ramp_b_dest:str, index_g_dest: str):
+    # ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
+    def __init__(self, property_name: str, id_texture_name: str, color_ramp_a: str, color_ramp_b: str, specular_ramp_a: str, specular_ramp_b: str, color_a_dest: str, color_b_dest: str, specular_a_dest: str, specular_b_dest: str, index_g_dest: str):
         self.property_name = property_name
-        self.ramp_name_a = ramp_name_a
-        self.ramp_name_b = ramp_name_b
         self.id_texture_name = id_texture_name
-        self.ramp_a_dest = ramp_a_dest
-        self.ramp_b_dest = ramp_b_dest
+        self.color_ramp_a = color_ramp_a
+        self.color_ramp_b = color_ramp_b
+        self.specular_ramp_a = specular_ramp_a
+        self.specular_ramp_b = specular_ramp_b
+        self.color_a_dest = color_a_dest
+        self.color_b_dest = color_b_dest
+        self.specular_a_dest = specular_a_dest
+        self.specular_b_dest = specular_b_dest
         self.index_g_dest = index_g_dest
         
     def __repr__(self):
         return f"ColorSetMapping({self.property_name})"
+    
+    
+    def setup_ramp(self, node_height, material, ramp_name):
+        ramp = None
+        if ramp_name not in material.nodes:
+            ramp = material.nodes.new('ShaderNodeValToRGB')
+            ramp.name = ramp_name
+            ramp.location = (0, node_height)
+            ramp.color_ramp.interpolation = 'CONSTANT'
+        else:
+            ramp = material.nodes[ramp_name]
+        
+            
+        # clear existing elements, leaving last one
+        while len(ramp.color_ramp.elements) > 1:
+            ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
+            
+        return ramp
     
     def apply(self, material, groupNode, properties, directory, node_height):
         if self.property_name not in properties:
@@ -185,29 +208,12 @@ class ColorSetMapping:
         material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
         
         # create colorRamp if it doesn't exist
-        colorRampA = None
-        if self.ramp_name_a not in material.nodes:
-            colorRampA = material.nodes.new('ShaderNodeValToRGB')
-            colorRampA.name = self.ramp_name_a
-            colorRampA.location = (0, node_height)
-            colorRampA.color_ramp.interpolation = 'CONSTANT'
-        else:
-            colorRampA = material.nodes[self.ramp_name_a]
+        colorRampA = self.setup_ramp(node_height - 300, material, self.color_ramp_a)            
+        colorRampB = self.setup_ramp(node_height - 600, material, self.color_ramp_b)
             
-        colorRampB = None
-        if self.ramp_name_b not in material.nodes:
-            colorRampB = material.nodes.new('ShaderNodeValToRGB')
-            colorRampB.name = self.ramp_name_b
-            colorRampB.location = (0, node_height - 300)
-            colorRampB.color_ramp.interpolation = 'CONSTANT'
-        else:
-            colorRampB = material.nodes[self.ramp_name_b]
-            
-        # clear existing elements, leaving last one
-        while len(colorRampA.color_ramp.elements) > 1:
-            colorRampA.color_ramp.elements.remove(colorRampA.color_ramp.elements[0])
-        while len(colorRampB.color_ramp.elements) > 1:
-            colorRampB.color_ramp.elements.remove(colorRampB.color_ramp.elements[0])
+        # create specularRamp if it doesn't exist
+        specularRampA = self.setup_ramp(node_height - 900, material, self.specular_ramp_a)            
+        specularRampB = self.setup_ramp(node_height - 1200, material, self.specular_ramp_b)
         
         odds = []
         evens = []
@@ -222,23 +228,36 @@ class ColorSetMapping:
             if i == 0:
                 colorRampA.color_ramp.elements[0].position = pos
                 colorRampA.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+                specularRampA.color_ramp.elements[0].position = pos
+                specularRampA.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
             else:
-                element = colorRampA.color_ramp.elements.new(pos)
-                element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+                colorElementA = colorRampA.color_ramp.elements.new(pos)
+                colorElementA.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+                specularElementA = specularRampA.color_ramp.elements.new(pos)
+                specularElementA.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
+                
                 
         for i, row in enumerate(odds):
             pos = i / len(odds)
             if i == 0:
                 colorRampB.color_ramp.elements[0].position = pos
                 colorRampB.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
+                specularRampB.color_ramp.elements[0].position = pos
+                specularRampB.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
             else:
                 element = colorRampB.color_ramp.elements.new(pos)
                 element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)  
+                specularElementB = specularRampB.color_ramp.elements.new(pos)
+                specularElementB.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
                 
         material.links.new(textureSeparate.outputs['Red'], colorRampA.inputs['Fac'])
         material.links.new(textureSeparate.outputs['Red'], colorRampB.inputs['Fac'])
-        material.links.new(colorRampA.outputs['Color'], groupNode.inputs[self.ramp_a_dest])
-        material.links.new(colorRampB.outputs['Color'], groupNode.inputs[self.ramp_b_dest])
+        material.links.new(textureSeparate.outputs['Red'], specularRampA.inputs['Fac'])
+        material.links.new(textureSeparate.outputs['Red'], specularRampB.inputs['Fac'])
+        material.links.new(colorRampA.outputs['Color'], groupNode.inputs[self.color_a_dest])
+        material.links.new(colorRampB.outputs['Color'], groupNode.inputs[self.color_b_dest])
+        material.links.new(specularRampA.outputs['Color'], groupNode.inputs[self.specular_a_dest])
+        material.links.new(specularRampB.outputs['Color'], groupNode.inputs[self.specular_b_dest])
         material.links.new(textureSeparate.outputs['Green'], groupNode.inputs[self.index_g_dest])   
         
         return node_height - 300
@@ -326,7 +345,7 @@ meddle_character_tattoo = NodeGroup(
 meddle_character = NodeGroup(
     'meddle character.shpk',
     [
-        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'TableA', 'TableB', 'color_a', 'color_b', 'id_mix'),
+        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
@@ -336,7 +355,7 @@ meddle_character_compatibility = NodeGroup(
     'meddle character_compatibility.shpk',
     [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
-        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'TableA', 'TableB', 'color_a', 'color_b', 'id_mix'),
+        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
