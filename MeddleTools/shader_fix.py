@@ -22,17 +22,19 @@ class ShaderFixActive(bpy.types.Operator):
         if context is None:
             return {'CANCELLED'}
         
+        active = context.active_object
+        
         blend_import.import_shaders()
         
         print(f"Folder selected: {self.directory}")
         
-        if context.active_object is None:
+        if active is None:
             return {'CANCELLED'}
             
-        if context.active_object.active_material is None:
+        if active.active_material is None:
             return {'CANCELLED'}
         
-        return shpkMtrlFixer(context.active_object, context.active_object.active_material, self.directory)
+        return shpkMtrlFixer(active, active.active_material, self.directory)
     
 class ShaderFixSelected(bpy.types.Operator):    
     bl_idname = "append.use_shaders_current"
@@ -51,11 +53,14 @@ class ShaderFixSelected(bpy.types.Operator):
         if context is None:
             return {'CANCELLED'}
         
+        # copy of selected objects
+        selected = context.selected_objects.copy()
+        
         blend_import.import_shaders()
         
         print(f"Folder selected: {self.directory}")
         
-        for obj in context.selected_objects:
+        for obj in selected:
             if obj is None:
                 continue
             
