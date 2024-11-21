@@ -17,11 +17,10 @@ permissions:
     contents: write
 
 jobs:
-    Release:
+    Test:
       runs-on: ubuntu-latest
       defaults:
           run:
-              working-directory: MeddleTools/
               shell: bash
       
       steps:
