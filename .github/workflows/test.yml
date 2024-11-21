@@ -2,44 +2,52 @@ name: Release
 
 # Add a concurrency group incase a tag is created, deleted, and then recreated while a release is in progress.
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # on every commit to the main branch
 on:
-    push:
-        branches:
-            - main
-
+  push:
+    branches:
+      - main
 
 # So we can use the GitHub API to create releases with the run token.
 permissions:
-    contents: write
+  contents: write
 
 jobs:
-    Test:
-      runs-on: ubuntu-latest
-      defaults:
-          run:
-              shell: bash
-      
-      steps:
-          - name: Checkout Repository
-            uses: actions/checkout@v4
+  Test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
-          - name: Update blender_manifest.toml
-            working-directory: MeddleTools/
-            run: |
-                sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-          - name: Zip Blender Plugin
-            run: |
-                ls
-                zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
+      - name: Update blender_manifest.toml
+        working-directory: MeddleTools/
+        run: |
+          sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
 
-          - name: Upload Artifacts
-            uses: actions/upload-artifact@v4
-            with:
-                name: Release Artifacts
-                path: |
-                    MeddleTools-${{ github.ref_name }}.zip
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+
+      - name: Install Blender
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r MeddleTools/requirements.txt
+
+      - name: Zip Blender Plugin
+        run: |
+          ls
+          zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release Artifacts
+          path: |
+            MeddleTools-${{ github.ref_name }}.zip
