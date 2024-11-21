@@ -42,4 +42,4 @@ jobs:
             with:
                 name: Release Artifacts
                 path: |
-                    MeddleTools/MeddleTools-${{ github.ref_name }}.zip
+                    MeddleTools-${{ github.ref_name }}.zip
