@@ -33,15 +33,14 @@ jobs:
                 sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
 
           - name: Zip Blender Plugin
-            working-directory: MeddleTools/
             run: |
-                zip -r "MeddleTools-${{ github.ref_name }}.zip" .
+                zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
 
           - name: Create GitHub Release
             uses: softprops/action-gh-release@v1
             with:
                 files: |
-                    MeddleTools/MeddleTools-${{ github.ref_name }}.zip
+                    MeddleTools-${{ github.ref_name }}.zip
                 prerelease: false
                 append_body: true # Append the release notes to the release body
                 generate_release_notes: true # Automatically makes a release body from PRs since the last release.
@@ -52,7 +51,7 @@ jobs:
             with:
                 name: Release Artifacts
                 path: |
-                    MeddleTools/MeddleTools-${{ github.ref_name }}.zip
+                    MeddleTools-${{ github.ref_name }}.zip
 
           - name: Push Changes to Main
             working-directory: MeddleTools/
