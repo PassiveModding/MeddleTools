@@ -2,64 +2,73 @@ name: Release
 
 # Add a concurrency group incase a tag is created, deleted, and then recreated while a release is in progress.
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Only run this workflow when a tag is pushed when the tag starts with "v".
 on:
-    push:
-        tags:
-            - "*"
+  push:
+    tags:
+      - "*"
 
 # So we can use the GitHub API to create releases with the run token.
 permissions:
-    contents: write
+  contents: write
 
 jobs:
-    Release:
-      runs-on: ubuntu-latest
-      defaults:
-          run:
-              shell: bash
-      
-      steps:
-          - name: Checkout Repository
-            uses: actions/checkout@v4
+  Release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
 
-          - name: Update blender_manifest.toml
-            working-directory: MeddleTools/
-            run: |
-                sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-          - name: Zip Blender Plugin
-            run: |
-                ls
-                zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
+      - name: Update blender_manifest.toml
+        working-directory: MeddleTools/
+        run: |
+          sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
 
-          - name: Create GitHub Release
-            uses: softprops/action-gh-release@v1
-            with:
-                files: |
-                    MeddleTools-${{ github.ref_name }}.zip
-                prerelease: false
-                append_body: true # Append the release notes to the release body
-                generate_release_notes: true # Automatically makes a release body from PRs since the last release.
-                fail_on_unmatched_files: true # If the files arent found, fail the workflow and abort the release.
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
 
-          - name: Upload Artifacts
-            uses: actions/upload-artifact@v4
-            with:
-                name: Release Artifacts
-                path: |
-                    MeddleTools-${{ github.ref_name }}.zip
+      - name: Install Dependencies to MeddleTools folder
+        run: |
+            python -m pip install --upgrade pip
+            pip install -r MeddleTools/requirements.txt --target MeddleTools/
 
-          - name: Push Changes to Main
-            working-directory: MeddleTools/
-            run: |
-                git add blender_manifest.toml
-            
-                git config --local user.name "github-actions [bot]"
-                git config --local user.email "github-actions@users.noreply.github.com"
-                git commit -m "Update blender_manifest.toml for ${{ github.ref_name }}"
-                
-                git push origin HEAD:main
+      - name: Zip Blender Plugin
+        run: |
+          ls
+          zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            MeddleTools-${{ github.ref_name }}.zip
+          prerelease: false
+          append_body: true # Append the release notes to the release body
+          generate_release_notes: true # Automatically makes a release body from PRs since the last release.
+          fail_on_unmatched_files: true # If the files arent found, fail the workflow and abort the release.
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release Artifacts
+          path: |
+            MeddleTools-${{ github.ref_name }}.zip
+
+      - name: Push Changes to Main
+        working-directory: MeddleTools/
+        run: |
+          git add blender_manifest.toml
+
+          git config --local user.name "github-actions [bot]"
+          git config --local user.email "github-actions@users.noreply.github.com"
+          git commit -m "Update blender_manifest.toml for ${{ github.ref_name }}"
+
+          git push origin HEAD:main
