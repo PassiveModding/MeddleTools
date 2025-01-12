@@ -69,7 +69,7 @@ class ShaderFixSelected(bpy.types.Operator):
                     shpkMtrlFixer(obj, slot.material, self.directory)
             
         return {'FINISHED'}
-    
+
 def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: str):
     if mat is None:
         return {'CANCELLED'}
@@ -115,7 +115,31 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
     groupNode.node_tree = nodeGroupData
     groupNode.location = (10, 300)
     groupNode.width = 300
-    material.links.new(groupNode.outputs[0], material.nodes['Material Output'].inputs['Surface'])
+    
+    # create principal bsdf node
+    bsdfNode = material.nodes.new('ShaderNodeBsdfPrincipled')
+    bsdfNode.location = (-300, 300)
+    bsdfNode.width = 300
+    
+    # connect groupNode outputs to bsdf inputs
+    # for input in bsdfNode.inputs:
+    #    print(f"{input.name}")
+    
+    for output in groupNode.outputs:
+        if output.name in ['BSDF', 'Surface']:
+            continue
+        if output.name not in bsdfNode.inputs:
+            print(f"Output {output.name} not found in bsdfNode")
+            continue
+        
+        material.links.new(output, bsdfNode.inputs[output.name])
+    
+    # connect bsdf to output
+    materialOutput = material.nodes['Material Output']
+    surfaceInput = materialOutput.inputs['Surface']
+    bsdfOutput = bsdfNode.outputs['BSDF']
+    materialOutput.location = (500, 300)    
+    material.links.new(bsdfOutput, surfaceInput)
     
     node_height = 300
     for mapping in groupData.mapping_definitions:
