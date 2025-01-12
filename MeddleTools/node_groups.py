@@ -375,6 +375,15 @@ meddle_bg = NodeGroup(
     ]
 )
 
+meddle_bg_prop = NodeGroup(
+    'meddle bgprop.shpk',
+    [
+        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+    ]
+)
+
 meddle_bg_colorchange = NodeGroup(
     'meddle bgcolorchange.shpk',
     [
@@ -396,7 +405,8 @@ nodegroups: list[NodeGroup] = [
     meddle_character,
     meddle_bg,
     meddle_bg_colorchange,
-    meddle_character_compatibility
+    meddle_character_compatibility,
+    meddle_bg_prop
 ]
         
 def matchShader(mat):
@@ -453,6 +463,9 @@ def matchShader(mat):
     
     if shaderPackage == 'bgcolorchange.shpk':
         return meddle_bg_colorchange
+    
+    if shaderPackage == 'bgprop.shpk':
+        return meddle_bg_prop
     
     print("No suitable shader found for " + shaderPackage + " on material " + mat.name)
     return None
