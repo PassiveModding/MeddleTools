@@ -113,12 +113,12 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
         return {'CANCELLED'}
     
     groupNode.node_tree = nodeGroupData
-    groupNode.location = (10, 300)
+    groupNode.location = (200, 300)
     groupNode.width = 300
     
     # create principal bsdf node
     bsdfNode = material.nodes.new('ShaderNodeBsdfPrincipled')
-    bsdfNode.location = (-300, 300)
+    bsdfNode.location = (600, 300)
     bsdfNode.width = 300
     
     # connect groupNode outputs to bsdf inputs
@@ -138,7 +138,7 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
     materialOutput = material.nodes['Material Output']
     surfaceInput = materialOutput.inputs['Surface']
     bsdfOutput = bsdfNode.outputs['BSDF']
-    materialOutput.location = (500, 300)    
+    materialOutput.location = (1000, 300)    
     material.links.new(bsdfOutput, surfaceInput)
     
     node_height = 300

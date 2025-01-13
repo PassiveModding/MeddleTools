@@ -339,6 +339,8 @@ meddle_character_tattoo = NodeGroup(
     'meddle charactertattoo.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        FloatRgbMapping('OptionColor', 'OptionColor'),
+        # DecalColor mapping to g_DecalColor <- not implemented
     ]
 )
 
