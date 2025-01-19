@@ -8,6 +8,8 @@ import os
 
 repo_url = "https://github.com/PassiveModding/MeddleTools"
 repo_api_url = "https://raw.githubusercontent.com/PassiveModding/MeddleTools/main/MeddleTools/blender_manifest.toml"
+repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
+sponsor_url = "https://github.com/sponsors/PassiveModding"
 current_version = "Unknown"
 latest_version = "Unknown"
 
@@ -31,8 +33,6 @@ class MeddlePanel(bpy.types.Panel):
         if context is None:
             return {'CANCELLED'}
         
-        obj = context.object
-
         layout = self.layout
 
         row = layout.row()
@@ -43,6 +43,29 @@ class MeddlePanel(bpy.types.Panel):
         
         row = layout.row()
         row.operator(shader_fix.ShaderFixActive.bl_idname, text='Apply Shaders to Current Material')
+        
+        box = layout.box()
+        col = box.column()
+        row = col.row()
+        row.label(text="Click either of the 'Apply Shaders' buttons")
+        row = col.row()
+        row.label(text="Navigate to the same folder")
+        row = col.row()
+        row.label(text="as your Meddle .gltf export")
+        row = col.row()
+        row.label(text="and select the 'Cache' folder.")
+        row = col.row()
+        row.label(text="This will apply the shaders to your model.")
+                
+        box = layout.box()
+        col = box.column()
+        row = col.row()
+        row.label(text="Please report any issues or")
+        row = col.row()
+        row.label(text="suggestions on the Github page.")        
+        
+        #row = layout.row()
+        #row.operator(blend_import.ShaderHelper.bl_idname, text='Helper')
         
         row = layout.row()
         row = layout.row()
@@ -63,10 +86,17 @@ class MeddlePanel(bpy.types.Panel):
         
         row = layout.row()
         row.operator("wm.url_open", text="Meddle Github").url = repo_url
+        
+        row = layout.row()
+        row.operator("wm.url_open", text="Report Issues").url = repo_issues_url
+        
+        row = layout.row()
+        row.operator("wm.url_open", text="Sponsor").url = sponsor_url
 
 
 classes = [
     blend_import.ImportShaders,
+    blend_import.ShaderHelper,
     shader_fix.ShaderFixActive,
     shader_fix.ShaderFixSelected,
     MeddlePanel,
