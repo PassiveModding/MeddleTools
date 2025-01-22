@@ -33,14 +33,14 @@ class PngMapping:
         
         # if image exists in scene, use that instead of loading from file
         for img in bpy.data.images:
-            if img.filepath == directory + pathStr:
+            if img.filepath == path.join(directory, pathStr):
                 texture.image = img
                 break
         else:        
-            if not path.exists(directory + pathStr):
-                print(f"Texture {directory + pathStr} not found")
+            if not path.exists(path.join(directory, pathStr)):
+                print(f"Texture {path.join(directory, pathStr)} not found")
                 return node_height - 300
-            texture.image = bpy.data.images.load(directory + pathStr)
+            texture.image = bpy.data.images.load(path.join(directory, pathStr))
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
         
@@ -187,14 +187,14 @@ class ColorSetMapping:
         
         # if image exists in scene, use that instead of loading from file
         for img in bpy.data.images:
-            if img.filepath == directory + pathStr:
+            if img.filepath == path.join(directory, pathStr):
                 texture.image = img
                 break
         else:        
-            if not path.exists(directory + pathStr):
-                print(f"Texture {directory + pathStr} not found")
+            if not path.exists(path.join(directory, pathStr)):
+                print(f"Texture {path.join(directory, pathStr)} not found")
                 return node_height - 300
-            texture.image = bpy.data.images.load(directory + pathStr)
+            texture.image = bpy.data.images.load(path.join(directory, pathStr))
         texture.location = (-500, node_height)
         texture.name = self.id_texture_name
         texture.label = self.id_texture_name

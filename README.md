@@ -16,7 +16,11 @@ This project is a Blender addon that provides various helper functions to assist
 2. Select the model imported, or any meshes you wish to apply shaders to
 3. Select 'Apply Shaders' and open the 'Cache' folder from your Meddle export folder
 
-![Usage](panel.png)
+![Usage](Assets/panel.png)
+
+> NOTE: Make sure you export with Character Texture Mode set to 'raw' from the Meddle plugin
+
+![Meddle Setup](Assets/raw-mode.png)
 
 ## Attributions
 ### [Lizzer_Tools_Meddle](https://github.com/SkulblakaDrotningu/Lizzer_Tools_Meddle) - [GNU GPL v3.0](https://github.com/SkulblakaDrotningu/Lizzer_Tools_Meddle/blob/main/LICENSE.txt)

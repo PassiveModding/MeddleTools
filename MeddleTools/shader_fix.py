@@ -6,7 +6,7 @@ from . import blend_import
 from . import node_groups
 
 class ShaderFixActive(bpy.types.Operator):    
-    bl_idname = "append.use_shaders"
+    bl_idname = "meddle.use_shaders_active_material"
     bl_label = "Use Shaders"    
     
     directory: bpy.props.StringProperty(subtype='DIR_PATH')    
@@ -37,8 +37,8 @@ class ShaderFixActive(bpy.types.Operator):
         return shpkMtrlFixer(active, active.active_material, self.directory)
     
 class ShaderFixSelected(bpy.types.Operator):    
-    bl_idname = "append.use_shaders_current"
-    bl_label = "Use Shaders on Current Material"
+    bl_idname = "meddle.use_shaders_selected_objects"
+    bl_label = "Use Shaders on Selected"
         
     directory: bpy.props.StringProperty(subtype='DIR_PATH')    
     

@@ -21,7 +21,7 @@ def import_shaders():
 
 class ImportShaders(bpy.types.Operator):
 
-    bl_idname = "append.import_shaders"
+    bl_idname = "meddle.import_shaders"
     bl_label = "Import Shaders"
     
     def execute(self, context):
@@ -32,7 +32,7 @@ class ImportShaders(bpy.types.Operator):
 
 class ShaderHelper(bpy.types.Operator):
 
-    bl_idname = "append.shader_helper"
+    bl_idname = "meddle.shader_helper"
     bl_label = "map selected"
     
     def execute(self, context):
