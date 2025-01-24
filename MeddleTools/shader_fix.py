@@ -82,7 +82,9 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
         return {'CANCELLED'}    
     
     groupData = node_groups.matchShader(mat)
-    if groupData is None:
+    node_group = groupData[0]
+    additional_mappings = groupData[1]
+    if node_group is None:
         return {'CANCELLED'}
     material = mat.node_tree
     if material is None:
@@ -103,13 +105,13 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
         print(f"Node {groupNode.name} is not a ShaderNodeGroup")
         return {'CANCELLED'}
     
-    if groupData.name not in bpy.data.node_groups:
-        print(f"Node group {groupData.name} not found")
+    if node_group.name not in bpy.data.node_groups:
+        print(f"Node group {node_group.name} not found")
         return {'CANCELLED'}
     
-    nodeGroupData = bpy.data.node_groups[groupData.name]
+    nodeGroupData = bpy.data.node_groups[node_group.name]
     if not isinstance(nodeGroupData, bpy.types.ShaderNodeTree):
-        print(f"Node group {groupData.name} is not a ShaderNodeTree")
+        print(f"Node group {node_group.name} is not a ShaderNodeTree")
         return {'CANCELLED'}
     
     groupNode.node_tree = nodeGroupData
@@ -142,7 +144,8 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
     material.links.new(bsdfOutput, surfaceInput)
     
     node_height = 300
-    for mapping in groupData.mapping_definitions:
+    all_mappings = node_group.mapping_definitions + additional_mappings
+    for mapping in all_mappings:
         if isinstance(mapping, node_groups.PngMapping):
             node_height = mapping.apply(material, groupNode, properties, directory, node_height)
         elif isinstance(mapping, node_groups.FloatRgbMapping):
@@ -153,6 +156,10 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             node_height = mapping.apply(material, mesh, groupNode, node_height)
         elif isinstance(mapping, node_groups.ColorSetMapping):
             node_height = mapping.apply(material, groupNode, properties, directory, node_height)
+        elif isinstance(mapping, node_groups.FloatValueMapping):
+            mapping.apply(groupNode)
+        elif isinstance(mapping, node_groups.FloatRgbaAlphaMapping):
+            mapping.apply(groupNode, properties)
                 
     return {'FINISHED'}
         

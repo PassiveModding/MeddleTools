@@ -112,7 +112,38 @@ class FloatRgbMapping:
         if len(value_arr) == 3:
             value_arr.append(1.0)
             
-        groupNode.inputs[self.color_dest].default_value = value_arr                       
+        groupNode.inputs[self.color_dest].default_value = value_arr
+        
+class FloatRgbaAlphaMapping:
+    def __init__(self, property_name: str, color_dest: str):
+        self.property_name = property_name
+        self.color_dest = color_dest
+        
+    def __repr__(self):
+        return f"FloatRgbAlphaMapping({self.property_name}, {self.color_dest})"
+    
+    def apply(self, groupNode, properties):
+        value_arr = [0.5, 0.5, 0.5, 1.0]
+        if self.property_name in properties:      
+            value_arr = properties[self.property_name].to_list()
+        else:
+            print(f"Property {self.property_name} not found in material")
+            
+        if len(value_arr) == 3:
+            value_arr.append(1.0)
+            
+        groupNode.inputs[self.color_dest].default_value = value_arr[3]
+        
+class FloatValueMapping:
+    def __init__(self, value: float, property_dest: str):
+        self.value = value
+        self.property_dest = property_dest
+        
+    def __repr__(self):
+        return f"FloatValueMappping({self.value}, {self.property_dest})"
+    
+    def apply(self, groupNode):                        
+        groupNode.inputs[self.property_dest].default_value = self.value           
             
 class ColorSetMapping:
     # ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
@@ -396,6 +427,20 @@ meddle_bg_colorchange = NodeGroup(
     ]
 )
 
+meddle_skin2 = NodeGroup(
+    'meddle skin2.shpk',
+    [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
+        FloatRgbMapping('SkinColor', 'Skin Color'),
+        FloatRgbMapping('LipColor', 'Lip Color'),
+        FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
+        FloatRgbMapping('MainColor', 'Hair Color'),
+        FloatRgbMapping('MeshColor', 'Highlights Color'),
+    ]
+)
+
 nodegroups: list[NodeGroup] = [
     meddle_skin,
     meddle_face_skin,
@@ -408,12 +453,13 @@ nodegroups: list[NodeGroup] = [
     meddle_bg,
     meddle_bg_colorchange,
     meddle_character_compatibility,
-    meddle_bg_prop
+    meddle_bg_prop,
+    meddle_skin2
 ]
-        
+
 def matchShader(mat):
     if mat is None:
-        return None
+        return (None, [])
     
     properties = mat
     shaderPackage = properties["ShaderPackage"]
@@ -421,53 +467,54 @@ def matchShader(mat):
     print(f"Matching shader {shaderPackage} on material {mat.name}")
     
     if shaderPackage is None:
-        return None
+        return (None, [])
     
     if shaderPackage == 'skin.shpk':
-        output = meddle_face_skin
+        output = (meddle_face_skin, [FloatValueMapping(1.0, 'IS_FACE')])
         if 'CategorySkinType' in properties:
             if properties["CategorySkinType"] == 'Body':
-                output = meddle_skin
+                output = (meddle_skin2, [])
             elif properties["CategorySkinType"] == 'Face':
-                output = meddle_face_skin
+                output =  (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
             elif properties["CategorySkinType"] == 'Hrothgar':
                 print("Hrothgar, not implemented")
+                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
                 
         return output
        
     if shaderPackage == 'hair.shpk':
-        output = meddle_hair
+        output = (meddle_hair, [])
         if 'CategoryHairType' in properties:
             if properties["CategoryHairType"] == 'Face':
-                output = meddle_face_hair
+                output = (meddle_face_hair, [])
                 
         return output
     
     if shaderPackage == 'iris.shpk':
-        return meddle_iris
+        return (meddle_iris, [])
     
     if shaderPackage == 'charactertattoo.shpk':
-        return meddle_character_tattoo
+        return (meddle_character_tattoo, [])
     
     if shaderPackage == 'characterocclusion.shpk':
-        return meddle_character_occlusion
+        return (meddle_character_occlusion, [])
     
     if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk':
         # check if GetValuesTextureType is 'Compatibility'
         if 'GetValuesTextureType' in properties:
             if properties['GetValuesTextureType'] == 'Compatibility':
-                return meddle_character_compatibility
+                return (meddle_character_compatibility, [])
             
-        return meddle_character
+        return (meddle_character, [])
     
     if shaderPackage == 'bg.shpk':
-        return meddle_bg
+        return (meddle_bg, [])
     
     if shaderPackage == 'bgcolorchange.shpk':
-        return meddle_bg_colorchange
+        return (meddle_bg_colorchange, [])
     
     if shaderPackage == 'bgprop.shpk':
-        return meddle_bg_prop
+        return (meddle_bg_prop, [])
     
     print("No suitable shader found for " + shaderPackage + " on material " + mat.name)
-    return None
+    return (None, [])
