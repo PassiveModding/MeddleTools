@@ -22,36 +22,30 @@ def getLatestVersion():
     data = response.json()
     return data["tag_name"] 
 
-class MeddleMainPanel(bpy.types.Panel):
+class MeddleImportPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddlePanel"
-    bl_label = "Meddle Tools"
+    bl_label = "Meddle Import"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_context = "objectmode"
     bl_category = "Meddle Tools"
+    
+    blender_import: bpy.props.BoolProperty(name="Blender Import", default=True)
+    
 
     def draw(self, context):
         if context is None:
             return {'CANCELLED'}
         
         layout = self.layout
-        
+             
+        layout.prop(context.scene.model_import_settings, 'gltfImportMode', text='Import Mode', expand=True)     
         row = layout.row()
-        row.operator(gltf_import.ModelImport.bl_idname, text='Import GLTF/GLB')
+        row.operator(gltf_import.ModelImport.bl_idname, text='Import .gltf/.glb', icon='IMPORT')
+        row.operator(gltf_import.ModelImportHelpHover.bl_idname, text='', icon='QUESTION')
         
-        box = layout.box()
-        col = box.column()
-        row = col.row()
-        row.label(text="Import and automatically apply shaders")
-        row = col.row()
-        row.label(text="Navigate to your Meddle export folder")
-        row = col.row()
-        row.label(text="and select the .gltf or .glb file")
-        col.separator()
-        row = col.row()
-        row.label(text="Make sure you exported in 'raw' mode")
-        row = col.row()
-        row.label(text="from the Meddle ffxiv plugin")
+        if context.scene.model_import_settings.displayImportHelp:
+            gltf_import.drawModelImportHelp(layout)
         
         layout.separator()
         
@@ -150,7 +144,7 @@ classes = [
     shader_fix.ShaderFixActive,
     shader_fix.ShaderFixSelected,
     gltf_import.ModelImport,
-    MeddleMainPanel,
+    MeddleImportPanel,
     MeddleShaderImportPanel,
     MeddleCreditPanel
 ]
@@ -179,7 +173,14 @@ def register():
     
     for cls in classes:
         bpy.utils.register_class(cls)
+        
+    gltf_import.registerModelImportSettings()
+        
 
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
+    
+    gltf_import.unregisterModelImportSettings()
+        
+        

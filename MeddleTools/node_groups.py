@@ -477,7 +477,6 @@ def matchShader(mat):
             elif properties["CategorySkinType"] == 'Face':
                 output =  (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
             elif properties["CategorySkinType"] == 'Hrothgar':
-                print("Hrothgar, not implemented")
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
                 
         return output
