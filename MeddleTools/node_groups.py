@@ -145,6 +145,206 @@ class FloatValueMapping:
     def apply(self, groupNode):                        
         groupNode.inputs[self.property_dest].default_value = self.value           
             
+class ColorSetMapping2:
+    def __init__(self, index_texture_name: str = 'g_SamplerIndex_PngCachePath', color_table_name: str = 'ColorTable'):
+        self.index_texture_name = index_texture_name
+        self.color_table_name = color_table_name
+    
+    def apply(self, material, groupNode, properties, directory, node_height):
+        if self.color_table_name not in properties:
+            print(f"Property ColorTable not found in material")
+            return node_height - 300
+        
+        colorTableProp = properties[self.color_table_name]
+        if 'ColorTable' not in colorTableProp:
+            print(f"Property ColorTable does not contain ColorTable")
+            return node_height - 300
+        
+        colorSet = colorTableProp['ColorTable']
+        
+        if 'Rows' not in colorSet:
+            print(f"Property ColorTable does not contain Rows")
+            return node_height - 300
+        
+        rows = colorSet['Rows']
+        if len(rows) == 0:
+            print(f"Property ColorTable contains no Rows")
+            return node_height - 300
+        
+        # spawn index texture
+        texture = material.nodes.new('ShaderNodeTexImage')
+        pathStr = properties[self.index_texture_name]
+        if pathStr is None or not isinstance(pathStr, str):
+            return node_height - 300
+        
+        texture.image = bpy.data.images.load(path.join(directory, pathStr))
+        texture.location = (-500, node_height)
+        texture.name = self.index_texture_name
+        # set to closest
+        texture.interpolation = 'Closest'
+        texture.image.colorspace_settings.name = 'Non-Color'
+        
+        # separate color
+        textureSeparate = material.nodes.new('ShaderNodeSeparateColor')
+        textureSeparate.location = (-300, node_height)
+        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
+        
+        odds = []
+        evens = []
+        for i, row in enumerate(rows):
+            if i % 2 == 0:
+                evens.append(row)
+            else:
+                odds.append(row)
+                
+        pairGroups = []
+        pairHorizontalPos = 0
+        pairPositions = []
+        for i, row in enumerate(evens):
+            even = evens[i]
+            odd = odds[i]
+            
+            # spawn colortablepair group
+            pairNode = material.nodes.new('ShaderNodeGroup')
+            pairNodeData = bpy.data.node_groups['meddle colortablepair']
+            pairNode.node_tree = pairNodeData
+            pairGroups.append(pairNode)
+            pairNode.location = (pairHorizontalPos, node_height)
+            pairPositions.append(pairHorizontalPos)
+            
+            # link index green to id_mix
+            material.links.new(textureSeparate.outputs['Green'], pairNode.inputs['id_mix'])
+            
+            # map inputs
+            # 'Diffuse': {'X': 0.03692627, 'Y': 0.029800415, 'Z': 0.012779236}, 'Specular': {'X': 0.48999023, 'Y': 0.48999023, 'Z': 0.48999023}, 'Emissive': {'X': 0, 'Y': 0, 'Z': 0}, 'SheenRate': 0.099975586, 'SheenTint': 0.19995117, 'SheenAptitude': 5, 'Roughness': 0.5, 'Metalness': 0, 'Anisotropy': 0, 'SphereMask': 0, 'ShaderId': 0, 'TileIndex': 12, 'TileAlpha': 1, 'SphereIndex': 0, 'TileMatrix': {'UU': 4.3320312, 'UV': 2.5, 'VU': -50, 'VV': 86.625}}
+            evenInputs = self.getRowInputs(even, '_0')
+            oddInputs = self.getRowInputs(odd, '_1')
+            
+            tileIndex0 = even['TileIndex']
+            tileIndex1 = odd['TileIndex']
+            # lookup tile index textures under 
+            # array_textures\chara\common\texture\tile_norm_array\tile_norm_array.{index}.png 
+            # array_textures\chara\common\texture\tile_orb_array\tile_orb_array.{index}.png
+            # create texture nodes for each if not already in nodes
+            # link to pairNode inputs
+            tileIndexNormPath0 = path.join(directory, f'array_textures/chara/common/texture/tile_norm_array/tile_norm_array.{tileIndex0}.png')
+            tileIndexOrbPath0 = path.join(directory, f'array_textures/chara/common/texture/tile_orb_array/tile_orb_array.{tileIndex0}.png')
+            tileIndexNormPath1 = path.join(directory, f'array_textures/chara/common/texture/tile_norm_array/tile_norm_array.{tileIndex1}.png')
+            tileIndexOrbPath1 = path.join(directory, f'array_textures/chara/common/texture/tile_orb_array/tile_orb_array.{tileIndex1}.png')
+            
+            def loadImage(path):
+                for img in bpy.data.images:
+                    if img.filepath == path:
+                        return img
+                return bpy.data.images.load(path)
+            
+            def setupImageNode(path, location, name):
+                img = loadImage(path)
+                node = material.nodes.new('ShaderNodeTexImage')
+                node.image = img
+                node.location = location
+                node.name = name
+                node.image.colorspace_settings.name = 'Non-Color'
+                return node
+            
+            tileIndexNorm0Node = setupImageNode(tileIndexNormPath0, (pairHorizontalPos - 300, node_height), f'tile_norm_array_{tileIndex0}')
+            tileIndexOrb0Node = setupImageNode(tileIndexOrbPath0, (pairHorizontalPos - 300, node_height - 300), f'tile_orb_array_{tileIndex0}')
+            tileIndexNorm1Node = setupImageNode(tileIndexNormPath1, (pairHorizontalPos - 300, node_height - 600), f'tile_norm_array_{tileIndex1}')
+            tileIndexOrb1Node = setupImageNode(tileIndexOrbPath1, (pairHorizontalPos - 300, node_height - 900), f'tile_orb_array_{tileIndex1}')
+            
+            material.links.new(tileIndexNorm0Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_0'])
+            material.links.new(tileIndexOrb0Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_0'])
+            material.links.new(tileIndexNorm1Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_1'])
+            material.links.new(tileIndexOrb1Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_1'])
+                        
+            for key, value in evenInputs.items():
+                if key in pairNode.inputs:
+                    pairNode.inputs[key].default_value = value
+            for key, value in oddInputs.items():
+                if key in pairNode.inputs:
+                    pairNode.inputs[key].default_value = value
+            
+            pairHorizontalPos += 600
+                    
+        # map outputs of pairGroups to pairMixer i.e. pair0 -> tile_norm_array_texture_0, pair1 -> tile_norm_array_texture_1, use red channel of index texture as factor
+        # set idx_0 to index of pair0, idx_1 to index of pair1
+        # set id_mix to mapIndex
+        # if id_mix == idx_0, use pair0, if id_mix == idx_1, use pair1, otherwise use pair0
+        prev_pair = pairGroups[0]
+        node_height -= 1500
+        prev_idx = 0
+        
+        for i, pair in enumerate(pairGroups):
+            if i == 0:
+                continue
+            pairMixer = material.nodes.new('ShaderNodeGroup')
+            pairMixer.node_tree = bpy.data.node_groups['meddle colortablepair_mixer']
+            horizontal_pos = pairPositions[i]
+            pairMixer.location = (horizontal_pos + 200, node_height)
+            material.links.new(textureSeparate.outputs['Red'], pairMixer.inputs['id_mix'])
+            pairMixer.inputs['idx_0'].default_value = prev_idx
+            pairMixer.inputs['idx_1'].default_value = i
+            self.mapPairMixer(material, pairMixer, pair, prev_pair)
+            prev_pair = pairMixer  
+            prev_idx = i
+
+        # connect final mixer to 'meddle character.shpk' inputs
+        for output in prev_pair.outputs:
+            if output.name in groupNode.inputs:
+                material.links.new(output, groupNode.inputs[output.name])
+            
+        return node_height - 300
+    
+    def mapPairMixer(self, material, pairMixer, pair, prev_pair):
+        for output in prev_pair.outputs:
+            mappedName = f'{output.name}_0'
+            if mappedName in pairMixer.inputs:
+                material.links.new(output, pairMixer.inputs[mappedName])
+        for output in pair.outputs:
+            mappedName = f'{output.name}_1'
+            if mappedName in pairMixer.inputs:
+                material.links.new(output, pairMixer.inputs[mappedName])
+        
+    
+    def fixColorArray(self, color):
+        return (color['X'], color['Y'], color['Z'], 1.0)
+    
+    def getRowInputs(self, row, suffix): 
+        diffuse = self.fixColorArray(row['Diffuse'])
+        specular = self.fixColorArray(row['Specular'])
+        emissive = self.fixColorArray(row['Emissive'])
+        sheenRate = row['SheenRate']
+        sheenTint = row['SheenTint']
+        sheenAptitude = row['SheenAptitude']
+        roughness = row['Roughness']
+        metalness = row['Metalness']
+        anisotropy = row['Anisotropy']
+        sphereMask = row['SphereMask']
+        shaderId = row['ShaderId']
+        tileIndex = row['TileIndex']
+        tileAlpha = row['TileAlpha']
+        sphereIndex = row['SphereIndex']
+        tileMatrix = row['TileMatrix']
+        
+        return {
+            f'diffuse_color{suffix}': diffuse,
+            f'specular_color{suffix}': specular,
+            f'emissive_color{suffix}': emissive,
+            f'sheen_rate{suffix}': sheenRate,
+            f'sheen_tint{suffix}': sheenTint,
+            f'sheen_aptitude{suffix}': sheenAptitude,
+            f'roughness{suffix}': roughness,
+            f'metallic{suffix}': metalness,
+            f'anisotropy{suffix}': anisotropy,
+            f'sphere_mask{suffix}': sphereMask,
+            f'shader_id{suffix}': shaderId,
+            f'tile_index{suffix}': tileIndex,
+            f'tile_alpha{suffix}': tileAlpha,
+            f'sphere_index{suffix}': sphereIndex,
+            f'tile_matrix{suffix}': tileMatrix
+        }
+        
+            
 class ColorSetMapping:
     # ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
     def __init__(self, property_name: str, id_texture_name: str, color_ramp_a: str, color_ramp_b: str, specular_ramp_a: str, specular_ramp_b: str, color_a_dest: str, color_b_dest: str, specular_a_dest: str, specular_b_dest: str, index_g_dest: str):
@@ -378,7 +578,8 @@ meddle_character_tattoo = NodeGroup(
 meddle_character = NodeGroup(
     'meddle character.shpk',
     [
-        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
+        #ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
+        ColorSetMapping2(),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
@@ -427,6 +628,15 @@ meddle_bg_colorchange = NodeGroup(
     ]
 )
 
+meddle_colortablepair = NodeGroup(
+    'meddle colortablepair',
+    []
+)
+meddle_colortablepair_mixer = NodeGroup(
+    'meddle colortablepair_mixer',
+    []
+)
+
 meddle_skin2 = NodeGroup(
     'meddle skin2.shpk',
     [
@@ -454,7 +664,9 @@ nodegroups: list[NodeGroup] = [
     meddle_bg_colorchange,
     meddle_character_compatibility,
     meddle_bg_prop,
-    meddle_skin2
+    meddle_skin2,
+    meddle_colortablepair,
+    meddle_colortablepair_mixer
 ]
 
 def matchShader(mat):

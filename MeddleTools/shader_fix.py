@@ -160,6 +160,19 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             mapping.apply(groupNode)
         elif isinstance(mapping, node_groups.FloatRgbaAlphaMapping):
             mapping.apply(groupNode, properties)
+        elif isinstance(mapping, node_groups.ColorSetMapping2):
+            node_height = mapping.apply(material, groupNode, properties, directory, node_height)
+            
+    # get horizontal pos of east most node
+    east = 0
+    for node in material.nodes:
+        if node.location[0] > east:
+            east = node.location[0]
+            
+    # set bsdfNode location and output location
+    groupNode.location = (east + 200, 300)
+    bsdfNode.location = (east + 400, 300)
+    materialOutput.location = (east + 600, 300)
                 
     return {'FINISHED'}
         
