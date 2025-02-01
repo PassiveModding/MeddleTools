@@ -8,11 +8,12 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str):
+    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear'):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
         self.color_space = color_space
+        self.interpolation = interpolation
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
@@ -43,6 +44,7 @@ class PngMapping:
             texture.image = bpy.data.images.load(path.join(directory, pathStr))
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
+        texture.interpolation = self.interpolation
         
         if self.alpha_dest is not None:
             material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
@@ -346,7 +348,6 @@ class ColorSetMapping2:
         
             
 class ColorSetMapping:
-    # ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
     def __init__(self, property_name: str, id_texture_name: str, color_ramp_a: str, color_ramp_b: str, specular_ramp_a: str, specular_ramp_b: str, color_a_dest: str, color_b_dest: str, specular_a_dest: str, specular_b_dest: str, index_g_dest: str):
         self.property_name = property_name
         self.id_texture_name = id_texture_name
@@ -430,6 +431,7 @@ class ColorSetMapping:
         texture.name = self.id_texture_name
         texture.label = self.id_texture_name
         texture.image.colorspace_settings.name = 'Non-Color'
+        texture.interpolation = 'Closest'
         
         
         # separate color
