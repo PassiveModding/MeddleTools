@@ -508,7 +508,86 @@ class BoolToFloatMapping:
             groupNode.inputs[self.float_dest].default_value = 1.0
         else:
             groupNode.inputs[self.float_dest].default_value = 0.0
-
+            
+class BgMapping:
+    def __init__(self):
+        pass
+    
+    def __repr__(self):
+        return f"BgMapping"
+    
+    def apply(self, material, mesh, groupNode, properties, directory, node_height):
+        # connect 0 maps.
+        # only connect vertex property mapping IF 1 maps exist
+        def mapTextureIfExists(texture_name, dest_name, alpha_dest_name, colorSpace): # returns node height if exists, otherwise none
+            if texture_name not in properties:
+                return None
+            
+            if properties[texture_name] is None:
+                return None
+            
+            # if path contains dummy_ string, skip
+            if 'dummy_' in properties[texture_name]:
+                return None
+            
+            # if image loaded already, use that
+            img = None
+            for image in bpy.data.images:
+                if image.filepath == path.join(directory, properties[texture_name]):
+                    img = image
+                    break
+            else:
+                img = bpy.data.images.load(path.join(directory, properties[texture_name]))
+                
+            texture = material.nodes.new('ShaderNodeTexImage')
+            texture.image = img
+            texture.location = (-500, node_height)
+            texture.image.colorspace_settings.name = colorSpace
+            
+            if alpha_dest_name is not None:
+                material.links.new(texture.outputs['Alpha'], groupNode.inputs[alpha_dest_name])
+                
+            if dest_name is not None:
+                material.links.new(texture.outputs['Color'], groupNode.inputs[dest_name])
+                
+            return node_height - 300
+        
+        should_connect_vertex = False
+        new_height = mapTextureIfExists('g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
+        if new_height is not None:
+            node_height = new_height
+            
+        new_height = mapTextureIfExists('g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', None, 'Non-Color')
+        if new_height is not None:
+            node_height = new_height
+            
+        new_height = mapTextureIfExists('g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', None, 'Non-Color')
+        if new_height is not None:
+            node_height = new_height
+            
+        new_height = mapTextureIfExists('g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
+        if new_height is not None:
+            node_height = new_height
+            should_connect_vertex = True
+            
+        new_height = mapTextureIfExists('g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', None, 'Non-Color')
+        if new_height is not None:
+            node_height = new_height
+            should_connect_vertex = True
+            
+        new_height = mapTextureIfExists('g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', None, 'Non-Color')
+        if new_height is not None:
+            node_height = new_height
+            should_connect_vertex = True
+            
+        if should_connect_vertex:
+            vertexProperty = VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0))
+            new_height = vertexProperty.apply(material, mesh, groupNode, node_height)
+            if new_height is not None:
+                node_height = new_height
+                
+        return node_height - 300
+            
 meddle_skin = NodeGroup(
     'meddle skin.shpk',
     [
@@ -601,13 +680,14 @@ meddle_character_compatibility = NodeGroup(
 meddle_bg = NodeGroup(
     'meddle bg.shpk',
     [
-        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        PngMapping('g_SamplerColorMap1', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
-        PngMapping('g_SamplerNormalMap1', 'g_SamplerNormalMap1', None, 'Non-Color'),
-        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
-        PngMapping('g_SamplerSpecularMap1', 'g_SamplerSpecularMap1', None, 'Non-Color'),
-        VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0)),
+        # PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
+        # PngMapping('g_SamplerColorMap1', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB'),
+        # PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        # PngMapping('g_SamplerNormalMap1', 'g_SamplerNormalMap1', None, 'Non-Color'),
+        # PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+        # PngMapping('g_SamplerSpecularMap1', 'g_SamplerSpecularMap1', None, 'Non-Color'),
+        # VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0)),
+        BgMapping()
     ]
 )
 
@@ -704,6 +784,7 @@ def matchShader(mat):
         return output
     
     if shaderPackage == 'iris.shpk':
+        # need to map heterochromia and limbal ring enabled values
         return (meddle_iris, [])
     
     if shaderPackage == 'charactertattoo.shpk':

@@ -162,6 +162,8 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             mapping.apply(groupNode, properties)
         elif isinstance(mapping, node_groups.ColorSetMapping2):
             node_height = mapping.apply(material, groupNode, properties, directory, node_height)
+        elif isinstance(mapping, node_groups.BgMapping):
+            node_height = mapping.apply(material, mesh, groupNode, properties, directory, node_height)
             
     # get horizontal pos of east most node
     east = 0
