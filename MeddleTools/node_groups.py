@@ -509,6 +509,75 @@ class BoolToFloatMapping:
         else:
             groupNode.inputs[self.float_dest].default_value = 0.0
             
+class FloatMapping:
+    def __init__(self, property_name: str, float_dest: str):
+        self.property_name = property_name
+        self.float_dest = float_dest
+        
+    def __repr__(self):
+        return f"FloatMapping({self.property_name}, {self.float_dest})"
+    
+    def apply(self, groupNode, properties):
+        if self.property_name not in properties:
+            print(f"Property {self.property_name} not found in material")
+            return
+        
+        def getFixedValueFloat(properties, property_name):
+            val_arr = properties[property_name].to_list()
+            return val_arr[0]
+        
+        groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name)
+        
+class FloatArrayIndexedValueMapping:
+    def __init__(self, property_name: str, float_dest: str, index: int):
+        self.property_name = property_name
+        self.float_dest = float_dest
+        self.index = index
+        
+    def __repr__(self):
+        return f"FloatArrayIndexedValueMapping({self.property_name}, {self.float_dest}, {self.index})"
+    
+    def apply(self, groupNode, properties):
+        if self.property_name not in properties:
+            print(f"Property {self.property_name} not found in material")
+            return
+        
+        def getFixedValueFloat(properties, property_name, index):
+            val_arr = properties[property_name].to_list()
+            return val_arr[index]
+        
+        groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name, self.index)
+
+        
+class UVMapping:
+    def __init__(self, uv_map_name: str, uv_dest: str):
+        self.uv_map_name = uv_map_name
+        self.uv_dest = uv_dest
+        
+    def __repr__(self):
+        return f"UVMapping({self.uv_map_name}, {self.uv_dest})"
+    
+    def apply(self, material, mesh, groupNode, node_height):
+        if mesh is None:
+            return node_height - 300
+        
+        if not isinstance(mesh, bpy.types.Mesh):
+            print(f"Object {mesh.name} is not a Mesh")
+            return node_height - 300     
+                
+        if self.uv_map_name not in mesh.uv_layers:
+            print(f"UV Map {self.uv_map_name} not found in mesh")
+            return node_height - 300
+        
+        uvMap = mesh.uv_layers[self.uv_map_name]
+        uvMapNode = material.nodes.new('ShaderNodeUVMap')
+        uvMapNode.uv_map = self.uv_map_name
+        uvMapNode.location = (-500, node_height)
+        material.links.new(uvMapNode.outputs['UV'], groupNode.inputs[self.uv_dest])
+        
+        return node_height - 300
+        
+            
 class BgMapping:
     def __init__(self):
         pass
@@ -611,13 +680,24 @@ meddle_face_skin = NodeGroup(
 )
 
 meddle_iris = NodeGroup(
-    'meddle iris.shpk',
+    'meddle iris2.shpk',
     [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-        FloatRgbMapping('LeftIrisColor', 'Eye Color'),
-        FloatRgbMapping('RightIrisColor', 'Second Eye Color')
+        VertexPropertyMapping('Color', 'vertex_color', None, (1.0, 0, 0, 1)),
+        FloatRgbMapping('g_WhiteEyeColor', 'g_WhiteEyeColor'),
+        FloatRgbMapping('LeftIrisColor', 'left_iris_color'),
+        FloatRgbMapping('RightIrisColor', 'right_iris_color'),
+        FloatRgbaAlphaMapping('LeftIrisColor', 'left_iris_limbal_ring_intensity'),
+        FloatRgbaAlphaMapping('RightIrisColor', 'right_iris_limbal_ring_intensity'),
+        FloatRgbMapping('g_IrisRingColor', 'g_IrisRingColor'),
+        FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
+        UVMapping('UVMap', 'UVMap'),
+        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_start', 0),
+        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_end', 1),
+        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
+        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),
     ]
 )
 

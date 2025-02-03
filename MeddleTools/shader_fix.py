@@ -66,8 +66,11 @@ class ShaderFixSelected(bpy.types.Operator):
             
             for slot in obj.material_slots:
                 if slot.material is not None:
-                    shpkMtrlFixer(obj, slot.material, self.directory)
-            
+                    try:
+                        shpkMtrlFixer(obj, slot.material, self.directory)
+                    except Exception as e:
+                        print(f"Error on {slot.material.name}: {e}")
+                                    
         return {'FINISHED'}
 
 def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: str):
@@ -164,6 +167,12 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             node_height = mapping.apply(material, groupNode, properties, directory, node_height)
         elif isinstance(mapping, node_groups.BgMapping):
             node_height = mapping.apply(material, mesh, groupNode, properties, directory, node_height)
+        elif isinstance(mapping, node_groups.FloatMapping):
+            mapping.apply(groupNode, properties)
+        elif isinstance(mapping, node_groups.UVMapping):
+            node_height = mapping.apply(material, mesh, groupNode, node_height)
+        elif isinstance(mapping, node_groups.FloatArrayIndexedValueMapping):
+            mapping.apply(groupNode, properties)
             
     # get horizontal pos of east most node
     east = 0
@@ -173,8 +182,8 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
             
     # set bsdfNode location and output location
     groupNode.location = (east + 200, 300)
-    bsdfNode.location = (east + 400, 300)
-    materialOutput.location = (east + 600, 300)
+    bsdfNode.location = (east + 600, 300)
+    materialOutput.location = (east + 1000, 300)
                 
     return {'FINISHED'}
         
