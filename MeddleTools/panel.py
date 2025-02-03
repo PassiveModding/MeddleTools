@@ -13,6 +13,7 @@ repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
 sponsor_url = "https://github.com/sponsors/PassiveModding"
 current_version = "Unknown"
 latest_version = "Unknown"
+latest_version_blob = None
 
   
 def getLatestVersion():
@@ -20,7 +21,7 @@ def getLatestVersion():
     if response.status_code != 200:
         raise Exception(f"Failed to get latest version: {response.status_code}")
     data = response.json()
-    return data["tag_name"] 
+    return data
 
 class MeddleImportPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddlePanel"
@@ -109,10 +110,18 @@ class MeddleCreditPanel(bpy.types.Panel):
             row = layout.row()
             row.label(text="Failed to check for updates")
         
-        row = layout.row()
+        section = layout.box()
+        col = section.column()
+        row = col.row()
         row.label(text=f"Version: {current_version}")
-        row = layout.row()
-        row.label(text=f"Latest Github Release: {latest_version}")
+        row = col.row()
+        row.label(text=f"Latest Release ({latest_version})")
+        row = col.row()
+        if latest_version_blob is not None:
+            latest_version_name = latest_version_blob["name"]
+            row.label(text=f"{latest_version_name}")
+        else:
+            row.label(text="Unknown")
         
         layout.separator()
         
@@ -151,8 +160,11 @@ classes = [
 
 def register():
     try:
+        latest_version_info = getLatestVersion()
         global latest_version
-        latest_version = getLatestVersion()
+        latest_version = latest_version_info["tag_name"]
+        global latest_version_blob
+        latest_version_blob = latest_version_info
         print(f"Latest version: {latest_version}")
     except Exception as e:
         print(f"Failed to get latest version: {e}")
