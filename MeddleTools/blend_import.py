@@ -9,6 +9,8 @@ def import_shaders():
     for n in node_groups.nodegroups:
         if n.name in bpy.data.node_groups:
             print(n.name + " already in file")
+            # replace with new version
+            # bpy.data.node_groups.remove(bpy.data.node_groups[n.name])
             continue
         
         print("Appending " + n.name)
@@ -18,6 +20,34 @@ def import_shaders():
             directory = blendfile + section,
             do_reuse_local_id = True
         )
+        
+def reimport_shaders():
+    blendfile = path.dirname(path.abspath(__file__)) + "/shaders.blend"
+    section = "\\NodeTree\\"
+
+    for n in node_groups.nodegroups:
+        if n.name in bpy.data.node_groups:
+            print("Replacing " + n.name)
+            bpy.data.node_groups.remove(bpy.data.node_groups[n.name])
+        
+        print("Appending " + n.name)
+        bpy.ops.wm.append(
+            filepath = blendfile + section + n.name,
+            filename = n.name,
+            directory = blendfile + section,
+            do_reuse_local_id = True
+        )
+        
+class ReimportShaders(bpy.types.Operator):
+    
+    bl_idname = "meddle.reimport_shaders"
+    bl_label = "Reimport Shaders"
+    
+    def execute(self, context):
+        reimport_shaders()
+            
+        return {'FINISHED'}
+    
 
 class ImportShaders(bpy.types.Operator):
 
