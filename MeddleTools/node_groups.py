@@ -874,7 +874,7 @@ def matchShader(mat):
     if shaderPackage == 'characterocclusion.shpk':
         return (meddle_character_occlusion, [])
     
-    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk':
+    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
         if 'GetValues' in properties:
             if properties['GetValues'] == 'GetValuesCompatibility':
                 return (meddle_character_compatibility, [])
