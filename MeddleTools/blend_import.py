@@ -3,7 +3,7 @@ from os import path
 from . import node_groups
 
 def import_shaders():        
-    blendfile = path.dirname(path.abspath(__file__)) + "/shaders.blend"
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     section = "\\NodeTree\\"
 
     for n in node_groups.nodegroups:
@@ -22,7 +22,7 @@ def import_shaders():
         )
         
 def reimport_shaders():
-    blendfile = path.dirname(path.abspath(__file__)) + "/shaders.blend"
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     section = "\\NodeTree\\"
 
     for n in node_groups.nodegroups:
