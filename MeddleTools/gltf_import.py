@@ -70,34 +70,38 @@ class ModelImport(bpy.types.Operator):
         if context is None:
             return {'CANCELLED'}
         
-        blend_import.import_shaders()
-        
-        def import_gltf(filepath):            
-            print(f"GLTF Path: {filepath}")
+        bpy.context.window.cursor_set('WAIT')
+        try:
+            blend_import.import_shaders()
             
-            cache_dir = path.join(path.dirname(filepath), "cache")
-
-            #bpy.ops.import_scene.gltf(filepath=self.filepath, disable_bone_shape=True)
-            if context.scene.model_import_settings.gltfImportMode == 'BLENDER':
-                bpy.ops.import_scene.gltf(filepath=filepath, disable_bone_shape=True)
-            elif context.scene.model_import_settings.gltfImportMode == 'TEMPERANCE':
-                bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
-            
-            imported_meshes = [obp for obp in context.selected_objects if obp.type == 'MESH']
-            
-            for mesh in imported_meshes:
-                if mesh is None:
-                    continue
+            def import_gltf(filepath):            
+                print(f"GLTF Path: {filepath}")
                 
-                for slot in mesh.material_slots:
-                    if slot.material is not None:
-                        try:
-                            shader_fix.shpkMtrlFixer(mesh, slot.material, cache_dir)
-                        except Exception as e:
-                            print(e)
-        
-        for file in self.files:
-            filepath = path.join(self.directory, file.name)
-            import_gltf(filepath)
-                        
-        return {'FINISHED'}
+                cache_dir = path.join(path.dirname(filepath), "cache")
+
+                #bpy.ops.import_scene.gltf(filepath=self.filepath, disable_bone_shape=True)
+                if context.scene.model_import_settings.gltfImportMode == 'BLENDER':
+                    bpy.ops.import_scene.gltf(filepath=filepath, disable_bone_shape=True)
+                elif context.scene.model_import_settings.gltfImportMode == 'TEMPERANCE':
+                    bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
+                
+                imported_meshes = [obp for obp in context.selected_objects if obp.type == 'MESH']
+                
+                for mesh in imported_meshes:
+                    if mesh is None:
+                        continue
+                    
+                    for slot in mesh.material_slots:
+                        if slot.material is not None:
+                            try:
+                                shader_fix.shpkMtrlFixer(mesh, slot.material, cache_dir)
+                            except Exception as e:
+                                print(e)
+            
+            for file in self.files:
+                filepath = path.join(self.directory, file.name)
+                import_gltf(filepath)
+                            
+            return {'FINISHED'}
+        finally:
+            bpy.context.window.cursor_set('DEFAULT')
