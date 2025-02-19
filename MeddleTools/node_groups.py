@@ -844,7 +844,7 @@ def matchShader(mat):
         return (None, [])
     
     if shaderPackage == 'skin.shpk':
-        output = (meddle_face_skin, [FloatValueMapping(1.0, 'IS_FACE')])
+        output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
         if 'CategorySkinType' in properties:
             if properties["CategorySkinType"] == 'Body':
                 output = (meddle_skin2, [])
