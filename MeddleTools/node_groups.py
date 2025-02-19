@@ -853,6 +853,8 @@ def matchShader(mat):
                 output =  (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
             elif properties["GetMaterialValue"] == 'GetMaterialValueBodyJJM':
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
+            elif properties["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
+                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_EMISSIVE')])
                 
         return output
        
@@ -875,10 +877,6 @@ def matchShader(mat):
         return (meddle_character_occlusion, [])
     
     if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
-        if 'GetValues' in properties:
-            if properties['GetValues'] == 'GetValuesCompatibility':
-                return (meddle_character_compatibility, [])
-            
         return (meddle_character, [])
     
     if shaderPackage == 'bg.shpk':
