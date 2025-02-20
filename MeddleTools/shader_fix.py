@@ -125,6 +125,10 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
     bsdfNode = material.nodes.new('ShaderNodeBsdfPrincipled')
     bsdfNode.location = (600, 300)
     bsdfNode.width = 300
+    try:
+        bsdfNode.subsurface_method = 'BURLEY'
+    except:
+        print("Subsurface method not found")
     
     # connect groupNode outputs to bsdf inputs
     # for input in bsdfNode.inputs:
