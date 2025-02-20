@@ -12,11 +12,13 @@ This project is a Blender addon that provides various helper functions to assist
 
 ## Usage
 
-1. Import meddle .gltf into blender
-2. Select the model imported, or any meshes you wish to apply shaders to
-3. Select 'Apply Shaders' and open the 'Cache' folder from your Meddle export folder
+Simply click `Import .gltf/.glb` and navigate to the same folder you exported from meddle and select the `.gltf` or `.glb` file, you can select multiple files from the same folder if you need.
 
 ![Usage](Assets/panel.png)
+
+If you need to re-apply the shaders, you can use the shaders panel. If applying to multiple meshes, select them in the Layout view and click the 'Apply Shaders to Selected Objects' button. If you are in the shader view and have a material already open, select the 'Apply Shaders to Current Material' button to update only the active material. The import shaders and re-import shaders aren't typically needed as it is performed automatically.
+
+![Shaders Panel](Assets/shaderspanel.png)
 
 > NOTE: Make sure you export with Character Texture Mode set to 'raw' from the Meddle plugin
 
