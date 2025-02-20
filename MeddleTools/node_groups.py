@@ -702,7 +702,7 @@ meddle_iris = NodeGroup(
 )
 
 meddle_hair = NodeGroup(
-    'meddle hair.shpk',
+    'meddle hair2.shpk',
     [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
@@ -711,14 +711,14 @@ meddle_hair = NodeGroup(
     ]
 )
 
-meddle_face_hair = NodeGroup(
-    'meddle face hair.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
-    ]
-)
+# meddle_face_hair = NodeGroup(
+#     'meddle face hair.shpk',
+#     [
+#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
+#         FloatRgbMapping('MainColor', 'Hair Color'),
+#     ]
+# )
 
 meddle_character_occlusion = NodeGroup(
     'meddle characterocclusion.shpk',
@@ -819,7 +819,7 @@ nodegroups: list[NodeGroup] = [
     # meddle_face_skin,
     meddle_iris,
     meddle_hair,
-    meddle_face_hair,
+    # meddle_face_hair,
     meddle_character_occlusion,
     meddle_character_tattoo,
     meddle_character,
@@ -855,6 +855,8 @@ def matchShader(mat):
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
             elif properties["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_EMISSIVE')])
+                
+        # for older meddle export compatibility
         if 'CategorySkinType' in properties:
             if properties["CategorySkinType"] == 'Body':
                 output = (meddle_skin2, [])
@@ -867,10 +869,18 @@ def matchShader(mat):
         return output
        
     if shaderPackage == 'hair.shpk':
-        output = (meddle_hair, [])
+        output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
+        # TODO: use single hair shader.
+        if 'GetSubColor' in properties:
+            if properties["GetSubColor"] == 'GetSubColorFace':
+                output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
+            if properties["GetSubColor"] == 'GetSubColorHair':
+                output = (meddle_hair, [])
+        
+        # compatibility
         if 'CategoryHairType' in properties:
             if properties["CategoryHairType"] == 'Face':
-                output = (meddle_face_hair, [])
+                output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
                 
         return output
     
