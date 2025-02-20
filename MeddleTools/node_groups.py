@@ -855,6 +855,14 @@ def matchShader(mat):
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
             elif properties["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
                 output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_EMISSIVE')])
+        if 'CategorySkinType' in properties:
+            if properties["CategorySkinType"] == 'Body':
+                output = (meddle_skin2, [])
+            elif properties["CategorySkinType"] == 'Face':
+                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
+            elif properties["CategorySkinType"] == 'Hrothgar':
+                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
+                
                 
         return output
        
