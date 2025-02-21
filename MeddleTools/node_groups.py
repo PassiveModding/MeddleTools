@@ -8,29 +8,35 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear'):
+    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
         self.color_space = color_space
         self.interpolation = interpolation
+        self.optional = optional
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
     
     def apply(self, material, groupNode, properties, directory, node_height):
-        texture = material.nodes.new('ShaderNodeTexImage')
         
         if self.property_name not in properties:
+            if self.optional:
+                return node_height
             print(f"Property {self.property_name} not found in material")
             return node_height - 300
         
+        
         pathStr = properties[self.property_name]
         if pathStr is None or not isinstance(pathStr, str):
+            print(f"Property {self.property_name} is not a string")
             return node_height - 300
         
         if pathStr.endswith('.tex'):
             pathStr = pathStr + '.png'
+        
+        texture = material.nodes.new('ShaderNodeTexImage')
         
         # if image exists in scene, use that instead of loading from file
         for img in bpy.data.images:
@@ -741,6 +747,7 @@ meddle_character = NodeGroup(
     [
         #ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
         ColorSetMapping2(),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
@@ -749,7 +756,7 @@ meddle_character = NodeGroup(
 meddle_character_compatibility = NodeGroup(
     'meddle character_compatibility.shpk',
     [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB', optional=True),
         ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
@@ -895,6 +902,8 @@ def matchShader(mat):
         return (meddle_character_occlusion, [])
     
     if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
+        if properties["GetValues"] == 'GetValuesCompatibility':
+            return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
         return (meddle_character, [])
     
     if shaderPackage == 'bg.shpk':
