@@ -130,23 +130,52 @@ def shpkMtrlFixer(object: bpy.types.Object, mat: bpy.types.Material, directory: 
     except:
         print("Subsurface method not found")
     
-    # connect groupNode outputs to bsdf inputs
-    # for input in bsdfNode.inputs:
-    #    print(f"{input.name}")
-    
     for output in groupNode.outputs:
         if output.name in ['BSDF', 'Surface']:
             continue
-        if output.name not in bsdfNode.inputs:
+        
+        inputMatch: bpy.types.NodeSocket = None
+        for input in bsdfNode.inputs:
+            if input.identifier == output.name:
+                inputMatch = input
+                break
+        if inputMatch is None:
             print(f"Output {output.name} not found in bsdfNode")
             continue
         
-        material.links.new(output, bsdfNode.inputs[output.name])
+        material.links.new(output, inputMatch)
     
     # connect bsdf to output
-    materialOutput = material.nodes['Material Output']
-    surfaceInput = materialOutput.inputs['Surface']
-    bsdfOutput = bsdfNode.outputs['BSDF']
+    
+    # display language independent connection
+    materialOutput: bpy.types.ShaderNodeOutputMaterial = None
+    surfaceInput: bpy.types.NodeSocket = None
+    for node in material.nodes:
+        if node.type == 'OUTPUT_MATERIAL':
+            materialOutput = node
+            
+    if materialOutput is None:
+        print("Material Output not found")
+        return {'CANCELLED'}
+    
+    for input in materialOutput.inputs:
+        if input.identifier == 'Surface':
+            surfaceInput = input
+            
+    if surfaceInput is None:
+        print("Surface input not found")
+        return {'CANCELLED'}
+            
+    
+    bsdfOutput: bpy.types.NodeSocket = None
+    for output in bsdfNode.outputs:
+        if output.identifier == 'BSDF':
+            bsdfOutput = output
+            
+    if bsdfOutput is None:
+        print("Bsdf Principled node not found")
+        return {'CANCELLED'}
+    
     materialOutput.location = (1000, 300)    
     material.links.new(bsdfOutput, surfaceInput)
     

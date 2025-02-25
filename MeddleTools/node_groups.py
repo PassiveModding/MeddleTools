@@ -592,6 +592,28 @@ class BgMapping:
         return f"BgMapping"
     
     def apply(self, material, mesh, groupNode, properties, directory, node_height):
+        
+        # UVMAP -> Vector Mapping Vector
+        # UVMAP -> Vornoi Texture Vector
+        # Vornoi Texture Color -> Vector Mapping Rotation
+        # Vector Mapping Vector -> Texture Vector
+        
+        vectorMapping = None
+        if '0x36F72D5F' in properties and properties['0x36F72D5F'] == '0x9807BAC4':
+            uvMapNode = material.nodes.new('ShaderNodeUVMap')
+            uvMapNode.uv_map = 'UVMap'
+            uvMapNode.location = (-500, node_height)
+            
+            voronoiTexture = material.nodes.new('ShaderNodeTexVoronoi')
+            voronoiTexture.location = (-300, node_height)
+            
+            vectorMapping = material.nodes.new('ShaderNodeMapping')
+            vectorMapping.location = (0, node_height)
+            
+            material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
+            material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
+            material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
+        
         # connect 0 maps.
         # only connect vertex property mapping IF 1 maps exist
         def mapTextureIfExists(texture_name, dest_name, alpha_dest_name, colorSpace): # returns node height if exists, otherwise none
@@ -624,6 +646,9 @@ class BgMapping:
                 
             if dest_name is not None:
                 material.links.new(texture.outputs['Color'], groupNode.inputs[dest_name])
+            
+            if vectorMapping is not None:
+                material.links.new(vectorMapping.outputs['Vector'], texture.inputs['Vector'])
                 
             return node_height - 300
         
@@ -821,6 +846,13 @@ meddle_skin2 = NodeGroup(
     ]
 )
 
+meddle_lightshaft = NodeGroup(
+    'meddle lightshaft.shpk',
+    [
+        FloatValueMapping(0.0, 'Alpha')
+    ]
+)
+
 nodegroups: list[NodeGroup] = [
     # meddle_skin,
     # meddle_face_skin,
@@ -836,7 +868,8 @@ nodegroups: list[NodeGroup] = [
     meddle_bg_prop,
     meddle_skin2,
     meddle_colortablepair,
-    meddle_colortablepair_mixer
+    meddle_colortablepair_mixer,
+    meddle_lightshaft
 ]
 
 def matchShader(mat):
@@ -906,8 +939,11 @@ def matchShader(mat):
             return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
         return (meddle_character, [])
     
-    if shaderPackage == 'bg.shpk':
+    if shaderPackage == 'bg.shpk' or shaderPackage == 'bguvscroll.shpk':
         return (meddle_bg, [])
+    
+    if shaderPackage == 'lightshaft.shpk':
+        return (meddle_lightshaft, [])
     
     if shaderPackage == 'bgcolorchange.shpk':
         return (meddle_bg_colorchange, [])
