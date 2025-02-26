@@ -918,8 +918,7 @@ def matchShader(mat):
                 output = (meddle_hair, [])
         
         # compatibility
-        if 'CategoryHairType' in properties:
-            if properties["CategoryHairType"] == 'Face':
+        if 'CategoryHairType' in properties and properties["CategoryHairType"] == 'Face':
                 output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
                 
         return output
@@ -935,7 +934,7 @@ def matchShader(mat):
         return (meddle_character_occlusion, [])
     
     if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
-        if properties["GetValues"] == 'GetValuesCompatibility':
+        if 'GetValues' in properties and properties["GetValues"] == 'GetValuesCompatibility':
             return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
         return (meddle_character, [])
     
