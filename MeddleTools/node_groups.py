@@ -939,6 +939,12 @@ def matchShader(mat):
     if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
         if 'GetValues' in properties and properties["GetValues"] == 'GetValuesCompatibility':
             return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
+        
+        # compatibility
+        if 'GetValuesTextureType' in properties:
+            if properties["GetValuesTextureType"] == 'Compatibility':
+                return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
+            
         return (meddle_character, [])
     
     if shaderPackage == 'bg.shpk' or shaderPackage == 'bguvscroll.shpk':
