@@ -97,7 +97,55 @@ class ModelImport(bpy.types.Operator):
                                 shader_fix.handleShaderFix(mesh, slot.material, cache_dir)
                             except Exception as e:
                                 print(e)
-            
+                                
+                imported_lights = [obp for obp in context.selected_objects if obp.name.startswith("Light")]
+                
+                for light in imported_lights:
+                    if light is None:
+                        continue
+                    
+                    lightData: bpy.types.Light = light.data   # type: ignore
+                    if lightData is None:
+                        continue
+                    
+                    if "LightType" in light:                        
+                        if light["LightType"] == "AreaLight":                            
+                            newLight = bpy.data.lights.new(name=light.name, type='AREA')                           
+                            newLight.size = light["ShadowNear"]
+                            newLight.energy = light.data.energy
+                            rgbCol = light["ColorRGB"]
+                            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
+                            newLight.use_custom_distance = True
+                            newLight.cutoff_distance = light["Range"]
+                            lightData.use_shadow = False
+                        
+                            # parent new lightData to the object
+                            light.data = newLight                            
+                            # remove old light
+                            bpy.data.lights.remove(lightData)
+                        if light["LightType"] == "PointLight":                            
+                            lightData.use_custom_distance = True
+                            lightData.cutoff_distance = light["Range"]
+                            lightData.shadow_soft_size = light["ShadowNear"]
+                            lightData.use_soft_falloff = False
+                            lightData.use_shadow = False
+                        if light["LightType"] == "CapsuleLight":
+                            newLight = bpy.data.lights.new(name=light.name, type='AREA')      
+                            newLight.shape = 'RECTANGLE'         
+                            newLight.energy = light.data.energy          
+                            newLight.size = (light["BoundsMax"]["X"] / 10)
+                            newLight.size_y = (light["BoundsMax"]["X"] / 10)       
+                            rgbCol = light["ColorRGB"]
+                            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
+                            newLight.use_custom_distance = True
+                            newLight.cutoff_distance = light["Range"]
+                            lightData.use_shadow = False
+                        
+                            # parent new lightData to the object
+                            light.data = newLight                            
+                            # remove old light
+                            bpy.data.lights.remove(lightData)
+                            
             for file in self.files:
                 filepath = path.join(self.directory, file.name)
                 import_gltf(filepath)

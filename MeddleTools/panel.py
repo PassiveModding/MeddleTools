@@ -81,6 +81,9 @@ class MeddleShaderImportPanel(bpy.types.Panel):
         row = layout.row()
         row.operator(blend_import.ImportShaders.bl_idname, text='Import Shaders')
         
+        row = layout.row()
+        row.operator(blend_import.ReplaceShaders.bl_idname, text='Replace Shaders')
+        
         box = layout.box()
         col = box.column()
         
@@ -149,6 +152,7 @@ class MeddleCreditPanel(bpy.types.Panel):
     
 classes = [
     blend_import.ImportShaders,
+    blend_import.ReplaceShaders,
     blend_import.ShaderHelper,
     shader_fix.ShaderFixActive,
     shader_fix.ShaderFixSelected,

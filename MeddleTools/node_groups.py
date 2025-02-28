@@ -1184,7 +1184,7 @@ def handleCharacter(mat: bpy.types.Material, mesh, directory):
 def handleBg(mat: bpy.types.Material, mesh, directory):
     group_name = "meddle bg.shpk"
     base_mappings = [
-        BgMapping()
+        BgMapping(),
     ]
     
     node_tree = mat.node_tree
@@ -1372,7 +1372,9 @@ def handleBgColorChange(mat: bpy.types.Material, mesh, directory):
 def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     group_name = "meddle lightshaft.shpk"
     base_mappings = [
-        FloatValueMapping(0.0, 'Alpha')
+        FloatValueMapping(0.0, 'Alpha'),
+        PngMapping('g_Sampler0_PngCachePath', 'g_Sampler0', 'g_Sampler0_alpha', 'sRGB'),
+        PngMapping('g_Sampler1_PngCachePath', 'g_Sampler1', 'g_Sampler1_alpha', 'sRGB'),
     ]
     
     node_tree = mat.node_tree
@@ -1403,6 +1405,24 @@ def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     group_node.location = (east + 300, 300)
     bsdf_node.location = (east + 600, 300)
     material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def spawnFallbackTextures(mat: bpy.types.Material, directory):
+    # check props for _PngCachePath, spawn image texture nodes for each
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    for prop in mat.keys():
+        if prop.endswith('_PngCachePath'):
+            texture_node = node_tree.nodes.new('ShaderNodeTexImage')     # type: ignore
+            texture_node.image = bpy.data.images.load(directory + mat[prop])
+            texture_node.location = (0, 0)
+            texture_node.label = prop
+            texture_node.name = prop
+            print(f"Spawned texture node for {prop}")
+            
     return {'FINISHED'}
     
 def handleShader(mat: bpy.types.Material, mesh, directory):

@@ -8,9 +8,12 @@ def import_shaders():
     blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     
     with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
-        data_to.node_groups = data_from.node_groups
+        for node_group in data_from.node_groups:
+            if node_group in bpy.data.node_groups:
+                print(f"Node group {node_group} already exists")
+                continue
+            bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
     
-
 class ImportShaders(bpy.types.Operator):
 
     bl_idname = "meddle.import_shaders"
@@ -18,6 +21,25 @@ class ImportShaders(bpy.types.Operator):
     
     def execute(self, context):
         import_shaders()
+            
+        return {'FINISHED'}
+    
+def replace_shaders():
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
+    
+    with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
+        for node_group in data_from.node_groups:
+            if node_group in bpy.data.node_groups:
+                print(f"Node group {node_group} already exists, replacing")
+            bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
+
+class ReplaceShaders(bpy.types.Operator):
+    
+    bl_idname = "meddle.replace_shaders"
+    bl_label = "Replace Shaders"
+    
+    def execute(self, context):
+        replace_shaders()
             
         return {'FINISHED'}
 
