@@ -918,9 +918,12 @@ def matchShader(mat):
                 output = (meddle_hair, [])
         
         # compatibility
-        if 'CategoryHairType' in properties and properties["CategoryHairType"] == 'Face':
+        if 'CategoryHairType' in properties:
+            if properties["CategoryHairType"] == 'Face':
                 output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
-                
+            if properties["CategoryHairType"] == 'Hair':
+                output = (meddle_hair, [])  
+        
         return output
     
     if shaderPackage == 'iris.shpk':
