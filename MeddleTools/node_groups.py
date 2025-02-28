@@ -2,6 +2,7 @@ from platform import node
 import bpy
 from os import path
 
+from numpy import isin
 
 
 class NodeGroup:
@@ -10,7 +11,7 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False):
+    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
@@ -56,7 +57,8 @@ class PngMapping:
         
         if self.alpha_dest is not None:
             material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
-        material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
+        if self.color_dest is not None:
+            material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
         
         return node_height - 300
     
@@ -689,192 +691,7 @@ class BgMapping:
                 node_height = new_height
                 
         return node_height - 300
-            
-            
-            
-# meddle_skin = NodeGroup(
-#     'meddle skin.shpk',
-#     [
-#         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-#         FloatRgbMapping('SkinColor', 'Skin Color'),
-#     ]
-# )
-
-# meddle_face_skin = NodeGroup(
-#     'meddle face skin.shpk',
-#     [
-#         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-#         FloatRgbMapping('SkinColor', 'Skin Color'),
-#         FloatRgbMapping('LipColor', 'Lip Color'),
-#         BoolToFloatMapping('LipStick', 'Lip Color Strength')
-#     ]
-# )
-
-meddle_iris = NodeGroup(
-    'meddle iris2.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-        VertexPropertyMapping('Color', 'vertex_color', None, (1.0, 0, 0, 1)),
-        FloatRgbMapping('g_WhiteEyeColor', 'g_WhiteEyeColor'),
-        FloatRgbMapping('LeftIrisColor', 'left_iris_color'),
-        FloatRgbMapping('RightIrisColor', 'right_iris_color'),
-        FloatRgbaAlphaMapping('LeftIrisColor', 'left_iris_limbal_ring_intensity'),
-        FloatRgbaAlphaMapping('RightIrisColor', 'right_iris_limbal_ring_intensity'),
-        FloatRgbMapping('g_IrisRingColor', 'g_IrisRingColor'),
-        FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
-        UVMapping('UVMap', 'UVMap'),
-        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_start', 0),
-        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_end', 1),
-        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
-        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),
-    ]
-)
-
-meddle_hair = NodeGroup(
-    'meddle hair2.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
-        FloatRgbMapping('MeshColor', 'Highlights Color'),
-    ]
-)
-
-# meddle_face_hair = NodeGroup(
-#     'meddle face hair.shpk',
-#     [
-#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-#         FloatRgbMapping('MainColor', 'Hair Color'),
-#     ]
-# )
-
-meddle_character_occlusion = NodeGroup(
-    'meddle characterocclusion.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-    ]
-)
-
-meddle_character_tattoo = NodeGroup(
-    'meddle charactertattoo.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        FloatRgbMapping('OptionColor', 'OptionColor'),
-        # DecalColor mapping to g_DecalColor <- not implemented
-    ]
-)
-
-meddle_character = NodeGroup(
-    'meddle character.shpk',
-    [
-        #ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
-        ColorSetMapping2(),
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-    ]
-)
-
-meddle_character_compatibility = NodeGroup(
-    'meddle character_compatibility.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB', optional=True),
-        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-    ]
-)
-
-
-meddle_bg = NodeGroup(
-    'meddle bg.shpk',
-    [
-        # PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        # PngMapping('g_SamplerColorMap1', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB'),
-        # PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
-        # PngMapping('g_SamplerNormalMap1', 'g_SamplerNormalMap1', None, 'Non-Color'),
-        # PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
-        # PngMapping('g_SamplerSpecularMap1', 'g_SamplerSpecularMap1', None, 'Non-Color'),
-        # VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0)),
-        BgMapping()
-    ]
-)
-
-meddle_bg_prop = NodeGroup(
-    'meddle bgprop.shpk',
-    [
-        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
-        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
-    ]
-)
-
-meddle_bg_colorchange = NodeGroup(
-    'meddle bgcolorchange.shpk',
-    [
-        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color'),
-        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
-        FloatRgbMapping('StainColor', 'StainColor'),
-        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
-    ]
-)
-
-meddle_colortablepair = NodeGroup(
-    'meddle colortablepair',
-    []
-)
-meddle_colortablepair_mixer = NodeGroup(
-    'meddle colortablepair_mixer',
-    []
-)
-
-meddle_skin2 = NodeGroup(
-    'meddle skin2.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('SkinColor', 'Skin Color'),
-        FloatRgbMapping('LipColor', 'Lip Color'),
-        FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
-        FloatRgbMapping('MeshColor', 'Highlights Color'),
-    ]
-)
-
-meddle_lightshaft = NodeGroup(
-    'meddle lightshaft.shpk',
-    [
-        FloatValueMapping(0.0, 'Alpha')
-    ]
-)
-
-nodegroups: list[NodeGroup] = [
-    # meddle_skin,
-    # meddle_face_skin,
-    meddle_iris,
-    meddle_hair,
-    # meddle_face_hair,
-    meddle_character_occlusion,
-    meddle_character_tattoo,
-    meddle_character,
-    meddle_bg,
-    meddle_bg_colorchange,
-    meddle_character_compatibility,
-    meddle_bg_prop,
-    meddle_skin2,
-    meddle_colortablepair,
-    meddle_colortablepair_mixer,
-    meddle_lightshaft
-]
+        
 
 def clearMaterialNodes(node_tree: bpy.types.ShaderNodeTree):
     for node in node_tree.nodes:
@@ -966,6 +783,8 @@ def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,
         elif isinstance(mapping, UVMapping):
             node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
         elif isinstance(mapping, FloatArrayIndexedValueMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, FloatHdrMapping):
             mapping.apply(targetNode, mat)
     
 def getEastModePosition(node_tree: bpy.types.ShaderNodeTree):
@@ -1181,10 +1000,42 @@ def handleCharacter(mat: bpy.types.Material, mesh, directory):
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
 
+class FloatHdrMapping:
+    def __init__(self, identifier: str, destRgb: str, destMagnitude: str):
+        self.identifier = identifier
+        self.destRgb = destRgb
+        self.destMagnitude = destMagnitude
+        
+    def apply(self, targetNode: bpy.types.ShaderNode, mat: bpy.types.Material):
+        if self.identifier not in mat:
+            return
+        
+        if targetNode is None:
+            return
+        
+        value = mat[self.identifier]
+        magnitude = 0
+        for val in value:
+            if val > magnitude:
+                magnitude = val
+                
+        if magnitude == 0:
+            return
+                
+        adjustedValue = [val / magnitude for val in value]
+        
+        if len(adjustedValue) == 3:
+            adjustedValue.append(1.0)
+        
+        targetNode.inputs[self.destRgb].default_value = adjustedValue
+        targetNode.inputs[self.destMagnitude].default_value = magnitude
+
 def handleBg(mat: bpy.types.Material, mesh, directory):
     group_name = "meddle bg.shpk"
     base_mappings = [
         BgMapping(),
+        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
+        FloatHdrMapping('g_EmissiveColor', 'g_EmissiveColor', 'g_EmissiveColor_magnitude'),
     ]
     
     node_tree = mat.node_tree
@@ -1407,6 +1258,45 @@ def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
 
+def handleCrystal(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle crystal.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', None, 'sRGB'),
+        PngMapping('g_SamplerEnvMap', 'g_SamplerEnvMap', None, 'Non-Color'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+        
 def spawnFallbackTextures(mat: bpy.types.Material, directory):
     # check props for _PngCachePath, spawn image texture nodes for each
     node_tree = mat.node_tree
@@ -1414,14 +1304,19 @@ def spawnFallbackTextures(mat: bpy.types.Material, directory):
         print(f"Material {mat.name} has no node tree")
         return {'CANCELLED'}
     
-    for prop in mat.keys():
-        if prop.endswith('_PngCachePath'):
-            texture_node = node_tree.nodes.new('ShaderNodeTexImage')     # type: ignore
-            texture_node.image = bpy.data.images.load(directory + mat[prop])
-            texture_node.location = (0, 0)
-            texture_node.label = prop
-            texture_node.name = prop
-            print(f"Spawned texture node for {prop}")
+    clearMaterialNodes(node_tree)
+    node_height = 0
+    
+    try:
+        for prop in mat.keys():
+            if prop.endswith('_PngCachePath'):
+                print(f"Spawning texture node for {prop}")                
+                mapping = PngMapping(prop, None, None, 'sRGB', optional=True)
+                node_height = mapping.apply(node_tree, None, mat, directory, node_height)
+                
+    except Exception as e:
+        print(f"Error spawning texture nodes: {e}")
+        return {'CANCELLED'}
             
     return {'FINISHED'}
     
@@ -1473,5 +1368,10 @@ def handleShader(mat: bpy.types.Material, mesh, directory):
         handleBgProp(mat, mesh, directory)
         return {'FINISHED'}
     
+    if shader_package == 'crystal.shpk':
+        handleCrystal(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    spawnFallbackTextures(mat, directory)
     print(f"No suitable shader found for {shader_package} on material {mat.name}")
     return {'CANCELLED'}
