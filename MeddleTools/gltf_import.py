@@ -94,7 +94,7 @@ class ModelImport(bpy.types.Operator):
                     for slot in mesh.material_slots:
                         if slot.material is not None:
                             try:
-                                shader_fix.shpkMtrlFixer(mesh, slot.material, cache_dir)
+                                shader_fix.handleShaderFix(mesh, slot.material, cache_dir)
                             except Exception as e:
                                 print(e)
             

@@ -1,5 +1,7 @@
+from platform import node
 import bpy
 from os import path
+
 
 
 class NodeGroup:
@@ -688,6 +690,8 @@ class BgMapping:
                 
         return node_height - 300
             
+            
+            
 # meddle_skin = NodeGroup(
 #     'meddle skin.shpk',
 #     [
@@ -872,92 +876,582 @@ nodegroups: list[NodeGroup] = [
     meddle_lightshaft
 ]
 
-def matchShader(mat):
-    if mat is None:
-        return (None, [])
-    
-    properties = mat
-    shaderPackage = properties["ShaderPackage"]
-    
-    print(f"Matching shader {shaderPackage} on material {mat.name}")
-    
-    if shaderPackage is None:
-        return (None, [])
-    
-    if shaderPackage == 'skin.shpk':
-        output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
-        if 'GetMaterialValue' in properties:
-            if properties["GetMaterialValue"] == 'GetMaterialValueBody':
-                output = (meddle_skin2, [])
-            elif properties["GetMaterialValue"] == 'GetMaterialValueFace':
-                output =  (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
-            elif properties["GetMaterialValue"] == 'GetMaterialValueBodyJJM':
-                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
-            elif properties["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
-                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_EMISSIVE')])
-                
-        # for older meddle export compatibility
-        if 'CategorySkinType' in properties:
-            if properties["CategorySkinType"] == 'Body':
-                output = (meddle_skin2, [])
-            elif properties["CategorySkinType"] == 'Face':
-                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
-            elif properties["CategorySkinType"] == 'Hrothgar':
-                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
-                
-                
-        return output
-       
-    if shaderPackage == 'hair.shpk':
-        output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
-        # TODO: use single hair shader.
-        if 'GetSubColor' in properties:
-            if properties["GetSubColor"] == 'GetSubColorFace':
-                output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
-            if properties["GetSubColor"] == 'GetSubColorHair':
-                output = (meddle_hair, [])
+def clearMaterialNodes(node_tree: bpy.types.ShaderNodeTree):
+    for node in node_tree.nodes:
+        node_tree.nodes.remove(node)
         
-        # compatibility
-        if 'CategoryHairType' in properties:
-            if properties["CategoryHairType"] == 'Face':
-                output = (meddle_hair, [FloatValueMapping(1.0, 'IS_FACE')])
-            if properties["CategoryHairType"] == 'Hair':
-                output = (meddle_hair, [])  
+def createBsdfNode(node_tree: bpy.types.ShaderNodeTree):
+    bsdf_node: bpy.types.ShaderNodeBsdfPrincipled = node_tree.nodes.new('ShaderNodeBsdfPrincipled')     # type: ignore
+    bsdf_node.width = 300
+    try:
+        bsdf_node.subsurface_method = 'BURLEY'
+    except:
+        print("Subsurface method not found")
+    return bsdf_node
+
+def mapBsdfOutput(mat: bpy.types.Material, material_output: bpy.types.ShaderNodeOutputMaterial, bsdf_node: bpy.types.ShaderNodeBsdfPrincipled, targetIdentifier: str):
+    source = None
+    for output in bsdf_node.outputs:
+        if output.identifier == 'BSDF':
+            source = output
+            break
         
-        return output
+    if source is None:
+        print("BSDF output not found")
+        return
     
-    if shaderPackage == 'iris.shpk':
-        # need to map heterochromia and limbal ring enabled values
-        return (meddle_iris, [])
-    
-    if shaderPackage == 'charactertattoo.shpk':
-        return (meddle_character_tattoo, [])
-    
-    if shaderPackage == 'characterocclusion.shpk':
-        return (meddle_character_occlusion, [])
-    
-    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk' or shaderPackage == 'characterglass.shpk':
-        if 'GetValues' in properties and properties["GetValues"] == 'GetValuesCompatibility':
-            return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
+    target = None
+    for input in material_output.inputs:
+        if input.identifier == targetIdentifier:
+            target = input
+            break
         
-        # compatibility
-        if 'GetValuesTextureType' in properties:
-            if properties["GetValuesTextureType"] == 'Compatibility':
-                return (meddle_character, [FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
+    if target is None:
+        print("Surface input not found")
+        return
+    
+    if mat.node_tree is None:
+        print("Material has no node tree")
+        return
+    
+    mat.node_tree.links.new(source, target)
+    
+def mapGroupOutputs(mat: bpy.types.Material, group_target: bpy.types.ShaderNode, group_node: bpy.types.ShaderNodeGroup):
+    for output in group_node.outputs:
+        inputMatch = None
+        for input in group_target.inputs:
+            if input.identifier == output.name:
+                inputMatch = input
+                break
             
-        return (meddle_character, [])
+        if inputMatch is None:
+            print(f"Output {output.name} not found in material")
+            continue
+        
+        if mat.node_tree is None:
+            print("Material has no node tree")
+            return
+        
+        mat.node_tree.links.new(output, inputMatch)
+        
+def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,  directory, mappings: list):
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
     
-    if shaderPackage == 'bg.shpk' or shaderPackage == 'bguvscroll.shpk':
-        return (meddle_bg, [])
+    node_height = 0
     
-    if shaderPackage == 'lightshaft.shpk':
-        return (meddle_lightshaft, [])
+    for mapping in mappings:
+        if isinstance(mapping, PngMapping):
+            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, FloatRgbMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, BoolToFloatMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, VertexPropertyMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
+        elif isinstance(mapping, ColorSetMapping):
+            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, FloatValueMapping):
+            mapping.apply(targetNode)
+        elif isinstance(mapping, FloatRgbaAlphaMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, ColorSetMapping2):
+            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, BgMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, FloatMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, UVMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
+        elif isinstance(mapping, FloatArrayIndexedValueMapping):
+            mapping.apply(targetNode, mat)
     
-    if shaderPackage == 'bgcolorchange.shpk':
-        return (meddle_bg_colorchange, [])
+def getEastModePosition(node_tree: bpy.types.ShaderNodeTree):
+    east = 0
+    for node in node_tree.nodes:
+        if node.location[0] > east:
+            east = node.location[0]
+            
+    return east
+
+def handleSkin(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle skin2.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
+        FloatRgbMapping('SkinColor', 'Skin Color'),
+        FloatRgbMapping('LipColor', 'Lip Color'),
+        FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
+        FloatRgbMapping('MainColor', 'Hair Color'),
+        FloatRgbMapping('MeshColor', 'Highlights Color'),
+    ]
     
-    if shaderPackage == 'bgprop.shpk':
-        return (meddle_bg_prop, [])
+    node_tree = mat.node_tree 
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+        
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+
+    mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+    if 'GetMaterialValue' in mat:
+        if mat["GetMaterialValue"] == 'GetMaterialValueBody':
+            mappings = []
+        elif mat["GetMaterialValue"] == 'GetMaterialValueFace':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        elif mat["GetMaterialValue"] == 'GetMaterialValueBodyJJM':
+            mappings = [FloatValueMapping(1.0, 'IS_HROTHGAR')]
+        elif mat["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
+            mappings = [FloatValueMapping(1.0, 'IS_EMISSIVE')]
+            
+    if 'CategorySkinType' in mat:
+        if mat["CategorySkinType"] == 'Body':
+            mappings = []
+        elif mat["CategorySkinType"] == 'Face':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        elif mat["CategorySkinType"] == 'Hrothgar':
+            mappings = [FloatValueMapping(1.0, 'IS_HROTHGAR')]
+          
+    clearMaterialNodes(node_tree)    
+            
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
     
-    print("No suitable shader found for " + shaderPackage + " on material " + mat.name)
-    return (None, [])
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')    
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+    
+def handleHair(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle hair2.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
+        FloatRgbMapping('MainColor', 'Hair Color'),
+        FloatRgbMapping('MeshColor', 'Highlights Color'),
+    ]
+    
+    node_tree = mat.node_tree 
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+        
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+    if 'GetSubColor' in mat:
+        if mat["GetSubColor"] == 'GetSubColorFace':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        if mat["GetSubColor"] == 'GetSubColorHair':
+            mappings = []
+            
+    if 'CategoryHairType' in mat:
+        if mat["CategoryHairType"] == 'Face':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        if mat["CategoryHairType"] == 'Hair':
+            mappings = []
+            
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleIris(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle iris2.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+        VertexPropertyMapping('Color', 'vertex_color', None, (1.0, 0, 0, 1)),
+        FloatRgbMapping('g_WhiteEyeColor', 'g_WhiteEyeColor'),
+        FloatRgbMapping('LeftIrisColor', 'left_iris_color'),
+        FloatRgbMapping('RightIrisColor', 'right_iris_color'),
+        FloatRgbaAlphaMapping('LeftIrisColor', 'left_iris_limbal_ring_intensity'),
+        FloatRgbaAlphaMapping('RightIrisColor', 'right_iris_limbal_ring_intensity'),
+        FloatRgbMapping('g_IrisRingColor', 'g_IrisRingColor'),
+        FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
+        UVMapping('UVMap', 'UVMap'),
+        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_start', 0),
+        FloatArrayIndexedValueMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_end', 1),
+        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
+        FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacter(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle character.shpk"
+    base_mappings = [
+        ColorSetMapping2(),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    if 'GetValues' in mat:
+        if mat["GetValues"] == 'GetValuesCompatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    if 'GetValuesTextureType' in mat:
+        if mat["GetValuesTextureType"] == 'Compatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleBg(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bg.shpk"
+    base_mappings = [
+        BgMapping()
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacterTattoo(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle charactertattoo.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        FloatRgbMapping('OptionColor', 'OptionColor'),
+        # DecalColor mapping to g_DecalColor <- not implemented
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle characterocclusion.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleBgProp(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bgprop.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleBgColorChange(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bgcolorchange.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color'),
+        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+        FloatRgbMapping('StainColor', 'StainColor'),
+        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleLightShaft(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle lightshaft.shpk"
+    base_mappings = [
+        FloatValueMapping(0.0, 'Alpha')
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+    
+def handleShader(mat: bpy.types.Material, mesh, directory):
+    if mat is None:
+        return {'CANCELLED'}
+    
+    shader_package = mat["ShaderPackage"]
+    if shader_package is None:
+        return {'CANCELLED'}
+    
+    if shader_package == 'skin.shpk':
+        handleSkin(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'hair.shpk':
+        handleHair(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'iris.shpk':
+        handleIris(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'charactertattoo.shpk':
+        handleCharacterTattoo(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'characterocclusion.shpk':
+        handleCharacterOcclusion(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk':
+        handleCharacter(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
+        handleBg(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'lightshaft.shpk':
+        handleLightShaft(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bgcolorchange.shpk':
+        handleBgColorChange(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bgprop.shpk':
+        handleBgProp(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    print(f"No suitable shader found for {shader_package} on material {mat.name}")
+    return {'CANCELLED'}
