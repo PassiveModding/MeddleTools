@@ -105,6 +105,7 @@ class VertexPropertyMapping:
             if self.alpha_dest is not None:
                 material.links.new(vertexColor.outputs['Alpha'], groupNode.inputs[self.alpha_dest])            
             return node_height - 300
+        
     
 class FloatRgbMapping:
     def __init__(self, property_name: str, color_dest: str):
@@ -125,6 +126,28 @@ class FloatRgbMapping:
             value_arr.append(1.0)
             
         groupNode.inputs[self.color_dest].default_value = value_arr
+        
+class FloatArrayMapping:
+    def __init__(self, property_name: str, dest: str, destLength: int):
+        self.property_name = property_name
+        self.dest = dest
+        self.destLength = destLength
+        
+    def __repr__(self):
+        return f"FloatArrayMapping({self.property_name}, {self.dest})"
+    
+    def apply(self, groupNode, properties):
+        if self.property_name not in properties:
+            print(f"Property {self.property_name} not found in material")
+            return
+        
+        value_arr = properties[self.property_name].to_list()
+        
+        # pad to destLength
+        while len(value_arr) < self.destLength:
+            value_arr.append(0.0)
+            
+        groupNode.inputs[self.dest].default_value = value_arr
         
 class FloatRgbaAlphaMapping:
     def __init__(self, property_name: str, color_dest: str):
@@ -786,6 +809,10 @@ def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,
             mapping.apply(targetNode, mat)
         elif isinstance(mapping, FloatHdrMapping):
             mapping.apply(targetNode, mat)
+        elif isinstance(mapping, FloatArrayMapping):
+            mapping.apply(targetNode, mat)
+        else:
+            print(f"Unknown mapping type {type(mapping)}")
     
 def getEastModePosition(node_tree: bpy.types.ShaderNodeTree):
     east = 0
@@ -1223,9 +1250,14 @@ def handleBgColorChange(mat: bpy.types.Material, mesh, directory):
 def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     group_name = "meddle lightshaft.shpk"
     base_mappings = [
-        FloatValueMapping(0.0, 'Alpha'),
         PngMapping('g_Sampler0_PngCachePath', 'g_Sampler0', 'g_Sampler0_alpha', 'sRGB'),
         PngMapping('g_Sampler1_PngCachePath', 'g_Sampler1', 'g_Sampler1_alpha', 'sRGB'),
+        FloatRgbMapping('g_Color', 'g_Color'),
+        VertexPropertyMapping('Color', 'vertex_color', 'vertex_alpha'),        
+        FloatArrayMapping('g_TexAnim', 'g_TexAnim', 3),
+        FloatArrayMapping('g_TexU', 'g_TexU', 3),
+        FloatArrayMapping('g_TexV', 'g_TexV', 3),
+        FloatArrayMapping('g_Ray', 'g_Ray', 3),
     ]
     
     node_tree = mat.node_tree
@@ -1244,14 +1276,14 @@ def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
     
     group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
-    
-    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+
+    group_node.node_tree = bpy.data.node_groups[groupa_name]     # type: ignore
     group_node.width = 300
     
     bsdf_node = createBsdfNode(node_tree)
     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
     mapGroupOutputs(mat, bsdf_node, group_node)
-    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)    
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
     bsdf_node.location = (east + 600, 300)
@@ -1327,6 +1359,8 @@ def handleShader(mat: bpy.types.Material, mesh, directory):
     shader_package = mat["ShaderPackage"]
     if shader_package is None:
         return {'CANCELLED'}
+    
+    print(f"Handling shader package {shader_package} on material {mat.name}")
     
     if shader_package == 'skin.shpk':
         handleSkin(mat, mesh, directory)

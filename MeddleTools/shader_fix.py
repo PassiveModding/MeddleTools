@@ -88,5 +88,48 @@ def handleShaderFix(object: bpy.types.Object, mat: bpy.types.Material, directory
     return node_groups.handleShader(mat, mesh, directory)
         
     
-        
+def handleLightFix(light: bpy.types.Object, directory: str):
+    if light is None:
+        return {'CANCELLED'}
     
+    lightData: bpy.types.Light = light.data   # type: ignore
+    if lightData is None:
+        return {'CANCELLED'}
+    
+    if "LightType" in light:                        
+        if light["LightType"] == "AreaLight":                            
+            newLight = bpy.data.lights.new(name=light.name, type='AREA')                           
+            newLight.size = light["ShadowNear"]
+            newLight.energy = light.data.energy
+            rgbCol = light["ColorRGB"]
+            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
+            newLight.use_custom_distance = True
+            newLight.cutoff_distance = light["Range"]
+            lightData.use_shadow = False
+        
+            # parent new lightData to the object
+            light.data = newLight                            
+            # remove old light
+            bpy.data.lights.remove(lightData)
+        if light["LightType"] == "PointLight":                            
+            lightData.use_custom_distance = True
+            lightData.cutoff_distance = light["Range"]
+            lightData.shadow_soft_size = light["ShadowNear"]
+            lightData.use_soft_falloff = False
+            lightData.use_shadow = False
+        if light["LightType"] == "CapsuleLight":
+            newLight = bpy.data.lights.new(name=light.name, type='AREA')      
+            newLight.shape = 'RECTANGLE'         
+            newLight.energy = light.data.energy          
+            newLight.size = (light["BoundsMax"]["X"] / 10)
+            newLight.size_y = (light["BoundsMax"]["X"] / 10)       
+            rgbCol = light["ColorRGB"]
+            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
+            newLight.use_custom_distance = True
+            newLight.cutoff_distance = light["Range"]
+            lightData.use_shadow = False
+        
+            # parent new lightData to the object
+            light.data = newLight                            
+            # remove old light
+            bpy.data.lights.remove(lightData)

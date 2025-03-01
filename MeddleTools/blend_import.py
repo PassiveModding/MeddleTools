@@ -31,6 +31,7 @@ def replace_shaders():
         for node_group in data_from.node_groups:
             if node_group in bpy.data.node_groups:
                 print(f"Node group {node_group} already exists, replacing")
+                bpy.data.node_groups.remove(bpy.data.node_groups[node_group])
             bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
 
 class ReplaceShaders(bpy.types.Operator):
