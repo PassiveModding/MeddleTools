@@ -1,8 +1,5 @@
-from platform import node
 import bpy
 from os import path
-
-from numpy import isin
 
 
 class NodeGroup:
@@ -51,6 +48,8 @@ class PngMapping:
                 print(f"Texture {path.join(directory, pathStr)} not found")
                 return node_height - 300
             texture.image = bpy.data.images.load(path.join(directory, pathStr))
+        texture.name = self.property_name
+        texture.label = self.property_name
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
         texture.interpolation = self.interpolation
@@ -378,155 +377,6 @@ class ColorSetMapping2:
             f'sphere_index{suffix}': sphereIndex,
             f'tile_matrix{suffix}': tileMatrix
         }
-        
-            
-class ColorSetMapping:
-    def __init__(self, property_name: str, id_texture_name: str, color_ramp_a: str, color_ramp_b: str, specular_ramp_a: str, specular_ramp_b: str, color_a_dest: str, color_b_dest: str, specular_a_dest: str, specular_b_dest: str, index_g_dest: str):
-        self.property_name = property_name
-        self.id_texture_name = id_texture_name
-        self.color_ramp_a = color_ramp_a
-        self.color_ramp_b = color_ramp_b
-        self.specular_ramp_a = specular_ramp_a
-        self.specular_ramp_b = specular_ramp_b
-        self.color_a_dest = color_a_dest
-        self.color_b_dest = color_b_dest
-        self.specular_a_dest = specular_a_dest
-        self.specular_b_dest = specular_b_dest
-        self.index_g_dest = index_g_dest
-        
-    def __repr__(self):
-        return f"ColorSetMapping({self.property_name})"
-    
-    
-    def setup_ramp(self, node_height, material, ramp_name):
-        ramp = None
-        if ramp_name not in material.nodes:
-            ramp = material.nodes.new('ShaderNodeValToRGB')
-            ramp.name = ramp_name
-            ramp.location = (0, node_height)
-            ramp.color_ramp.interpolation = 'CONSTANT'
-        else:
-            ramp = material.nodes[ramp_name]
-        
-            
-        # clear existing elements, leaving last one
-        while len(ramp.color_ramp.elements) > 1:
-            ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
-            
-        return ramp
-    
-    def apply(self, material, groupNode, properties, directory, node_height):
-        if self.property_name not in properties:
-            print(f"Property {self.property_name} not found in material")
-            return node_height - 300
-        
-        colorSet = properties[self.property_name]
-        if colorSet is None:
-            print(f"Property {self.property_name} is None")
-            return node_height - 300
-        
-        if 'ColorTable' not in colorSet:
-            print(f"Property {self.property_name} does not contain ColorTable")
-            return node_height - 300
-       
-        colorSet = colorSet['ColorTable']
-       
-        if 'Rows' not in colorSet:
-            print(f"Property {self.property_name} does not contain Rows")
-            return node_height - 300
-        
-        rows = colorSet['Rows']
-        if len(rows) == 0:
-            print(f"Property {self.property_name} contains no Rows")
-            return node_height - 300
-        
-        texture = material.nodes.new('ShaderNodeTexImage')
-        
-
-        pathStr = properties[self.id_texture_name]
-        if pathStr is None or not isinstance(pathStr, str):
-            return node_height - 300
-        
-        if pathStr.endswith('.tex'):
-            pathStr = pathStr + '.png'
-        
-        # if image exists in scene, use that instead of loading from file
-        for img in bpy.data.images:
-            if img.filepath == path.join(directory, pathStr):
-                texture.image = img
-                break
-        else:        
-            if not path.exists(path.join(directory, pathStr)):
-                print(f"Texture {path.join(directory, pathStr)} not found")
-                return node_height - 300
-            texture.image = bpy.data.images.load(path.join(directory, pathStr))
-        texture.location = (-500, node_height)
-        texture.name = self.id_texture_name
-        texture.label = self.id_texture_name
-        texture.image.colorspace_settings.name = 'Non-Color'
-        texture.interpolation = 'Closest'
-        
-        
-        # separate color
-        textureSeparate = material.nodes.new('ShaderNodeSeparateColor')
-        textureSeparate.location = (-300, node_height)
-        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])        
-        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
-        
-        # create colorRamp if it doesn't exist
-        colorRampA = self.setup_ramp(node_height - 300, material, self.color_ramp_a)            
-        colorRampB = self.setup_ramp(node_height - 600, material, self.color_ramp_b)
-            
-        # create specularRamp if it doesn't exist
-        specularRampA = self.setup_ramp(node_height - 900, material, self.specular_ramp_a)            
-        specularRampB = self.setup_ramp(node_height - 1200, material, self.specular_ramp_b)
-        
-        odds = []
-        evens = []
-        for i, row in enumerate(rows):
-            if i % 2 == 0:
-                evens.append(row)
-            else:
-                odds.append(row)
-                
-        for i, row in enumerate(evens):
-            pos = i / len(evens)
-            if i == 0:
-                colorRampA.color_ramp.elements[0].position = pos
-                colorRampA.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularRampA.color_ramp.elements[0].position = pos
-                specularRampA.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-            else:
-                colorElementA = colorRampA.color_ramp.elements.new(pos)
-                colorElementA.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularElementA = specularRampA.color_ramp.elements.new(pos)
-                specularElementA.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-                
-                
-        for i, row in enumerate(odds):
-            pos = i / len(odds)
-            if i == 0:
-                colorRampB.color_ramp.elements[0].position = pos
-                colorRampB.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularRampB.color_ramp.elements[0].position = pos
-                specularRampB.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-            else:
-                element = colorRampB.color_ramp.elements.new(pos)
-                element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)  
-                specularElementB = specularRampB.color_ramp.elements.new(pos)
-                specularElementB.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-                
-        material.links.new(textureSeparate.outputs['Red'], colorRampA.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], colorRampB.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], specularRampA.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], specularRampB.inputs['Fac'])
-        material.links.new(colorRampA.outputs['Color'], groupNode.inputs[self.color_a_dest])
-        material.links.new(colorRampB.outputs['Color'], groupNode.inputs[self.color_b_dest])
-        material.links.new(specularRampA.outputs['Color'], groupNode.inputs[self.specular_a_dest])
-        material.links.new(specularRampB.outputs['Color'], groupNode.inputs[self.specular_b_dest])
-        material.links.new(textureSeparate.outputs['Green'], groupNode.inputs[self.index_g_dest])   
-        
-        return node_height - 300
 
 class BoolToFloatMapping:
     def __init__(self, property_name: str, float_dest: str):
@@ -765,7 +615,13 @@ def mapGroupOutputs(mat: bpy.types.Material, group_target: bpy.types.ShaderNode,
                 break
             
         if inputMatch is None:
-            print(f"Output {output.name} not found in material")
+            for input in group_target.inputs:
+                if input.name == output.name:
+                    inputMatch = input
+                    break
+                
+        if inputMatch is None:
+            print(f"Input {output.name} not found in target node")
             continue
         
         if mat.node_tree is None:
@@ -1026,6 +882,189 @@ def handleCharacter(mat: bpy.types.Material, mesh, directory):
     bsdf_node.location = (east + 600, 300)
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
+
+def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle character.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB', optional=True),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    if 'GetValues' in mat:
+        if mat["GetValues"] == 'GetValuesCompatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    if 'GetValuesTextureType' in mat:
+        if mat["GetValuesTextureType"] == 'Compatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    def setupRamp(node_height, material, name): 
+        ramp = None
+        for node in material.nodes:
+            if node.name == name:
+                ramp = node
+                break
+            
+        if ramp is None:
+            ramp = material.nodes.new('ShaderNodeValToRGB')
+            
+        ramp.location = (-300, node_height)
+        ramp.name = name
+        ramp.label = name
+        ramp.color_ramp.interpolation = 'CONSTANT'
+        
+        while len(ramp.color_ramp.elements) > 1:
+            ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
+            
+        return ramp
+    
+    def mapRamp(rampA, rampB, rows, rowProp, type):
+        def getValueForType(row, type):
+            if type == 'XYZ':
+                return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
+            elif type == 'Float':
+                return (row[rowProp], row[rowProp], row[rowProp], 1.0)
+            
+        odds = []
+        evens = []
+        
+        for i, row in enumerate(rows):
+            if i % 2 == 0:
+                evens.append(row)
+            else:
+                odds.append(row)
+                
+        for i, row in enumerate(evens):
+            pos = i / len(evens)
+            if i == 0:
+                rampA.color_ramp.elements[0].position = pos
+                rampA.color_ramp.elements[0].color = getValueForType(row, type)
+            else:
+                elementA = rampA.color_ramp.elements.new(pos)
+                elementA.color = getValueForType(row, type)
+                
+        for i, row in enumerate(odds):
+            pos = i / len(odds)
+            if i == 0:
+                rampB.color_ramp.elements[0].position = pos
+                rampB.color_ramp.elements[0].color = getValueForType(row, type)
+            else:
+                element = rampB.color_ramp.elements.new(pos)
+                element.color = getValueForType(row, type)
+    
+    if 'ColorTable' not in mat:
+        print("ColorTable prop not found")
+        return {'CANCELLED'}
+    
+    colorSet = mat['ColorTable']
+    if 'ColorTable' not in colorSet:
+        print("ColorTable not found in colorset")
+        return {'CANCELLED'}
+    
+    colorTable = colorSet['ColorTable']
+    
+    if 'Rows' not in colorTable:
+        print("Rows not found in colorTable")
+        return {'CANCELLED'}
+    
+    rows = colorTable['Rows']
+    
+    if len(rows) == 0:
+        print("No rows found in colorTable")
+        return {'CANCELLED'}
+    
+    clearMaterialNodes(node_tree)
+    indexMapping = PngMapping('g_SamplerIndex_PngCachePath', None, None, 'Non-Color', 'Closest')    
+    indexMapping.apply(node_tree, None, mat, directory, 0)
+        
+    indexTexture = None
+    for node in node_tree.nodes:
+        if node.name == 'g_SamplerIndex_PngCachePath':
+            indexTexture = node
+            break
+        
+    if indexTexture is None:
+        print("Index texture not found")
+        return {'CANCELLED'}
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    
+    colorRampA = setupRamp(0, node_tree, 'ColorRampA')
+    colorRampB = setupRamp(-300, node_tree, 'ColorRampB')
+    specularRampA = setupRamp(-600, node_tree, 'SpecularRampA')
+    specularRampB = setupRamp(-900, node_tree, 'SpecularRampB')
+    emissionRampA = setupRamp(-1200, node_tree, 'EmissionRampA')
+    emissionRampB = setupRamp(-1500, node_tree, 'EmissionRampB')
+    metalnessRampA = setupRamp(-1800, node_tree, 'MetalnessRampA')
+    metalnessRampB = setupRamp(-2100, node_tree, 'MetalnessRampB')
+    roughnessRampA = setupRamp(-2400, node_tree, 'RoughnessRampA')
+    roughnessRampB = setupRamp(-2700, node_tree, 'RoughnessRampB')
+    
+    mapRamp(colorRampA, colorRampB, rows, 'Diffuse', 'XYZ')
+    mapRamp(specularRampA, specularRampB, rows, 'Specular', 'XYZ')
+    mapRamp(emissionRampA, emissionRampB, rows, 'Emissive', 'XYZ')
+    mapRamp(metalnessRampA, metalnessRampB, rows, 'Metalness', 'Float')
+    mapRamp(roughnessRampA, roughnessRampB, rows, 'Roughness', 'Float')
+    
+    textureSeparate: bpy.types.ShaderNodeSeparateColor = node_tree.nodes.new('ShaderNodeSeparateColor')     # type: ignore
+    textureSeparate.location = (-300, -300)
+    node_tree.links.new(indexTexture.outputs['Color'], textureSeparate.inputs['Color'])
+    
+    allRamps = [
+        colorRampA, colorRampB, 
+        specularRampA, specularRampB, 
+        emissionRampA, emissionRampB, 
+        metalnessRampA, metalnessRampB, 
+        roughnessRampA, roughnessRampB
+    ]
+    
+    for ramp in allRamps:
+        node_tree.links.new(textureSeparate.outputs['Red'], ramp.inputs['Fac'])
+        
+    pair_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    pair_node.node_tree = bpy.data.node_groups["meddle colortablepair"]     # type: ignore
+    pair_node.width = 300
+    
+    node_tree.links.new(textureSeparate.outputs['Green'], pair_node.inputs['id_mix'])
+    node_tree.links.new(colorRampA.outputs['Color'], pair_node.inputs['diffuse_color_0'])
+    node_tree.links.new(colorRampB.outputs['Color'], pair_node.inputs['diffuse_color_1'])
+    node_tree.links.new(specularRampA.outputs['Color'], pair_node.inputs['specular_color_0'])
+    node_tree.links.new(specularRampB.outputs['Color'], pair_node.inputs['specular_color_1'])
+    node_tree.links.new(emissionRampA.outputs['Color'], pair_node.inputs['emissive_color_0'])
+    node_tree.links.new(emissionRampB.outputs['Color'], pair_node.inputs['emissive_color_1'])
+    node_tree.links.new(metalnessRampA.outputs['Color'], pair_node.inputs['metallic_0'])
+    node_tree.links.new(metalnessRampB.outputs['Color'], pair_node.inputs['metallic_1'])
+    node_tree.links.new(roughnessRampA.outputs['Color'], pair_node.inputs['roughness_0'])
+    node_tree.links.new(roughnessRampB.outputs['Color'], pair_node.inputs['roughness_1'])
+    mapGroupOutputs(mat, group_node, pair_node)
+    
+    east = getEastModePosition(node_tree)
+    pair_node.location = (east + 300, 300)
+    group_node.location = (east + 600, 300)
+    bsdf_node.location = (east + 900, 300)
+    material_output.location = (east + 1200, 300)
+    
+    return {'FINISHED'}
+    
+    
 
 class FloatHdrMapping:
     def __init__(self, identifier: str, destRgb: str, destMagnitude: str):
@@ -1383,7 +1422,7 @@ def handleShader(mat: bpy.types.Material, mesh, directory):
         return {'FINISHED'}
     
     if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk':
-        handleCharacter(mat, mesh, directory)
+        handleCharacterSimple(mat, mesh, directory)
         return {'FINISHED'}
     
     if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
