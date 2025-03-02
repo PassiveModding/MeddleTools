@@ -647,8 +647,6 @@ def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,
             mapping.apply(targetNode, mat)
         elif isinstance(mapping, VertexPropertyMapping):
             node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
-        elif isinstance(mapping, ColorSetMapping):
-            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
         elif isinstance(mapping, FloatValueMapping):
             mapping.apply(targetNode)
         elif isinstance(mapping, FloatRgbaAlphaMapping):
@@ -919,7 +917,7 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
         if ramp is None:
             ramp = material.nodes.new('ShaderNodeValToRGB')
             
-        ramp.location = (-300, node_height)
+        ramp.location = (0, node_height)
         ramp.name = name
         ramp.label = name
         ramp.color_ramp.interpolation = 'CONSTANT'
@@ -986,7 +984,7 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
     
     clearMaterialNodes(node_tree)
     indexMapping = PngMapping('g_SamplerIndex_PngCachePath', None, None, 'Non-Color', 'Closest')    
-    indexMapping.apply(node_tree, None, mat, directory, 0)
+    indexMapping.apply(node_tree, None, mat, directory, 300)
         
     indexTexture = None
     for node in node_tree.nodes:
@@ -1025,7 +1023,7 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
     mapRamp(roughnessRampA, roughnessRampB, rows, 'Roughness', 'Float')
     
     textureSeparate: bpy.types.ShaderNodeSeparateColor = node_tree.nodes.new('ShaderNodeSeparateColor')     # type: ignore
-    textureSeparate.location = (-300, -300)
+    textureSeparate.location = (-200, -300)
     node_tree.links.new(indexTexture.outputs['Color'], textureSeparate.inputs['Color'])
     
     allRamps = [
@@ -1058,9 +1056,9 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
     
     east = getEastModePosition(node_tree)
     pair_node.location = (east + 300, 300)
-    group_node.location = (east + 600, 300)
-    bsdf_node.location = (east + 900, 300)
-    material_output.location = (east + 1200, 300)
+    group_node.location = (east + 700, 300)
+    bsdf_node.location = (east + 1000, 300)
+    material_output.location = (east + 1300, 300)
     
     return {'FINISHED'}
     
