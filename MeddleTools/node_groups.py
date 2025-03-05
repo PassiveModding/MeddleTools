@@ -8,29 +8,35 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear'):
+    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
         self.color_space = color_space
         self.interpolation = interpolation
+        self.optional = optional
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
     
     def apply(self, material, groupNode, properties, directory, node_height):
-        texture = material.nodes.new('ShaderNodeTexImage')
         
         if self.property_name not in properties:
+            if self.optional:
+                return node_height
             print(f"Property {self.property_name} not found in material")
             return node_height - 300
         
+        
         pathStr = properties[self.property_name]
         if pathStr is None or not isinstance(pathStr, str):
+            print(f"Property {self.property_name} is not a string")
             return node_height - 300
         
         if pathStr.endswith('.tex'):
             pathStr = pathStr + '.png'
+        
+        texture = material.nodes.new('ShaderNodeTexImage')
         
         # if image exists in scene, use that instead of loading from file
         for img in bpy.data.images:
@@ -42,13 +48,16 @@ class PngMapping:
                 print(f"Texture {path.join(directory, pathStr)} not found")
                 return node_height - 300
             texture.image = bpy.data.images.load(path.join(directory, pathStr))
+        texture.name = self.property_name
+        texture.label = self.property_name
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
         texture.interpolation = self.interpolation
         
         if self.alpha_dest is not None:
             material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
-        material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
+        if self.color_dest is not None:
+            material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
         
         return node_height - 300
     
@@ -95,6 +104,7 @@ class VertexPropertyMapping:
             if self.alpha_dest is not None:
                 material.links.new(vertexColor.outputs['Alpha'], groupNode.inputs[self.alpha_dest])            
             return node_height - 300
+        
     
 class FloatRgbMapping:
     def __init__(self, property_name: str, color_dest: str):
@@ -115,6 +125,28 @@ class FloatRgbMapping:
             value_arr.append(1.0)
             
         groupNode.inputs[self.color_dest].default_value = value_arr
+        
+class FloatArrayMapping:
+    def __init__(self, property_name: str, dest: str, destLength: int):
+        self.property_name = property_name
+        self.dest = dest
+        self.destLength = destLength
+        
+    def __repr__(self):
+        return f"FloatArrayMapping({self.property_name}, {self.dest})"
+    
+    def apply(self, groupNode, properties):
+        if self.property_name not in properties:
+            print(f"Property {self.property_name} not found in material")
+            return
+        
+        value_arr = properties[self.property_name].to_list()
+        
+        # pad to destLength
+        while len(value_arr) < self.destLength:
+            value_arr.append(0.0)
+            
+        groupNode.inputs[self.dest].default_value = value_arr
         
 class FloatRgbaAlphaMapping:
     def __init__(self, property_name: str, color_dest: str):
@@ -345,155 +377,6 @@ class ColorSetMapping2:
             f'sphere_index{suffix}': sphereIndex,
             f'tile_matrix{suffix}': tileMatrix
         }
-        
-            
-class ColorSetMapping:
-    def __init__(self, property_name: str, id_texture_name: str, color_ramp_a: str, color_ramp_b: str, specular_ramp_a: str, specular_ramp_b: str, color_a_dest: str, color_b_dest: str, specular_a_dest: str, specular_b_dest: str, index_g_dest: str):
-        self.property_name = property_name
-        self.id_texture_name = id_texture_name
-        self.color_ramp_a = color_ramp_a
-        self.color_ramp_b = color_ramp_b
-        self.specular_ramp_a = specular_ramp_a
-        self.specular_ramp_b = specular_ramp_b
-        self.color_a_dest = color_a_dest
-        self.color_b_dest = color_b_dest
-        self.specular_a_dest = specular_a_dest
-        self.specular_b_dest = specular_b_dest
-        self.index_g_dest = index_g_dest
-        
-    def __repr__(self):
-        return f"ColorSetMapping({self.property_name})"
-    
-    
-    def setup_ramp(self, node_height, material, ramp_name):
-        ramp = None
-        if ramp_name not in material.nodes:
-            ramp = material.nodes.new('ShaderNodeValToRGB')
-            ramp.name = ramp_name
-            ramp.location = (0, node_height)
-            ramp.color_ramp.interpolation = 'CONSTANT'
-        else:
-            ramp = material.nodes[ramp_name]
-        
-            
-        # clear existing elements, leaving last one
-        while len(ramp.color_ramp.elements) > 1:
-            ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
-            
-        return ramp
-    
-    def apply(self, material, groupNode, properties, directory, node_height):
-        if self.property_name not in properties:
-            print(f"Property {self.property_name} not found in material")
-            return node_height - 300
-        
-        colorSet = properties[self.property_name]
-        if colorSet is None:
-            print(f"Property {self.property_name} is None")
-            return node_height - 300
-        
-        if 'ColorTable' not in colorSet:
-            print(f"Property {self.property_name} does not contain ColorTable")
-            return node_height - 300
-       
-        colorSet = colorSet['ColorTable']
-       
-        if 'Rows' not in colorSet:
-            print(f"Property {self.property_name} does not contain Rows")
-            return node_height - 300
-        
-        rows = colorSet['Rows']
-        if len(rows) == 0:
-            print(f"Property {self.property_name} contains no Rows")
-            return node_height - 300
-        
-        texture = material.nodes.new('ShaderNodeTexImage')
-        
-
-        pathStr = properties[self.id_texture_name]
-        if pathStr is None or not isinstance(pathStr, str):
-            return node_height - 300
-        
-        if pathStr.endswith('.tex'):
-            pathStr = pathStr + '.png'
-        
-        # if image exists in scene, use that instead of loading from file
-        for img in bpy.data.images:
-            if img.filepath == path.join(directory, pathStr):
-                texture.image = img
-                break
-        else:        
-            if not path.exists(path.join(directory, pathStr)):
-                print(f"Texture {path.join(directory, pathStr)} not found")
-                return node_height - 300
-            texture.image = bpy.data.images.load(path.join(directory, pathStr))
-        texture.location = (-500, node_height)
-        texture.name = self.id_texture_name
-        texture.label = self.id_texture_name
-        texture.image.colorspace_settings.name = 'Non-Color'
-        texture.interpolation = 'Closest'
-        
-        
-        # separate color
-        textureSeparate = material.nodes.new('ShaderNodeSeparateColor')
-        textureSeparate.location = (-300, node_height)
-        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])        
-        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
-        
-        # create colorRamp if it doesn't exist
-        colorRampA = self.setup_ramp(node_height - 300, material, self.color_ramp_a)            
-        colorRampB = self.setup_ramp(node_height - 600, material, self.color_ramp_b)
-            
-        # create specularRamp if it doesn't exist
-        specularRampA = self.setup_ramp(node_height - 900, material, self.specular_ramp_a)            
-        specularRampB = self.setup_ramp(node_height - 1200, material, self.specular_ramp_b)
-        
-        odds = []
-        evens = []
-        for i, row in enumerate(rows):
-            if i % 2 == 0:
-                evens.append(row)
-            else:
-                odds.append(row)
-                
-        for i, row in enumerate(evens):
-            pos = i / len(evens)
-            if i == 0:
-                colorRampA.color_ramp.elements[0].position = pos
-                colorRampA.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularRampA.color_ramp.elements[0].position = pos
-                specularRampA.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-            else:
-                colorElementA = colorRampA.color_ramp.elements.new(pos)
-                colorElementA.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularElementA = specularRampA.color_ramp.elements.new(pos)
-                specularElementA.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-                
-                
-        for i, row in enumerate(odds):
-            pos = i / len(odds)
-            if i == 0:
-                colorRampB.color_ramp.elements[0].position = pos
-                colorRampB.color_ramp.elements[0].color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)
-                specularRampB.color_ramp.elements[0].position = pos
-                specularRampB.color_ramp.elements[0].color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-            else:
-                element = colorRampB.color_ramp.elements.new(pos)
-                element.color = (row['Diffuse']['X'], row['Diffuse']['Y'], row['Diffuse']['Z'], 1.0)  
-                specularElementB = specularRampB.color_ramp.elements.new(pos)
-                specularElementB.color = (row['Specular']['X'], row['Specular']['Y'], row['Specular']['Z'], 1.0)
-                
-        material.links.new(textureSeparate.outputs['Red'], colorRampA.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], colorRampB.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], specularRampA.inputs['Fac'])
-        material.links.new(textureSeparate.outputs['Red'], specularRampB.inputs['Fac'])
-        material.links.new(colorRampA.outputs['Color'], groupNode.inputs[self.color_a_dest])
-        material.links.new(colorRampB.outputs['Color'], groupNode.inputs[self.color_b_dest])
-        material.links.new(specularRampA.outputs['Color'], groupNode.inputs[self.specular_a_dest])
-        material.links.new(specularRampB.outputs['Color'], groupNode.inputs[self.specular_b_dest])
-        material.links.new(textureSeparate.outputs['Green'], groupNode.inputs[self.index_g_dest])   
-        
-        return node_height - 300
 
 class BoolToFloatMapping:
     def __init__(self, property_name: str, float_dest: str):
@@ -586,6 +469,28 @@ class BgMapping:
         return f"BgMapping"
     
     def apply(self, material, mesh, groupNode, properties, directory, node_height):
+        
+        # UVMAP -> Vector Mapping Vector
+        # UVMAP -> Vornoi Texture Vector
+        # Vornoi Texture Color -> Vector Mapping Rotation
+        # Vector Mapping Vector -> Texture Vector
+        
+        vectorMapping = None
+        if '0x36F72D5F' in properties and properties['0x36F72D5F'] == '0x9807BAC4':
+            uvMapNode = material.nodes.new('ShaderNodeUVMap')
+            uvMapNode.uv_map = 'UVMap'
+            uvMapNode.location = (-500, node_height)
+            
+            voronoiTexture = material.nodes.new('ShaderNodeTexVoronoi')
+            voronoiTexture.location = (-300, node_height)
+            
+            vectorMapping = material.nodes.new('ShaderNodeMapping')
+            vectorMapping.location = (0, node_height)
+            
+            material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
+            material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
+            material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
+        
         # connect 0 maps.
         # only connect vertex property mapping IF 1 maps exist
         def mapTextureIfExists(texture_name, dest_name, alpha_dest_name, colorSpace): # returns node height if exists, otherwise none
@@ -618,6 +523,9 @@ class BgMapping:
                 
             if dest_name is not None:
                 material.links.new(texture.outputs['Color'], groupNode.inputs[dest_name])
+            
+            if vectorMapping is not None:
+                material.links.new(vectorMapping.outputs['Vector'], texture.inputs['Vector'])
                 
             return node_height - 300
         
@@ -656,32 +564,229 @@ class BgMapping:
                 node_height = new_height
                 
         return node_height - 300
-            
-meddle_skin = NodeGroup(
-    'meddle skin.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-        FloatRgbMapping('SkinColor', 'Skin Color'),
-    ]
-)
+        
 
-meddle_face_skin = NodeGroup(
-    'meddle face skin.shpk',
-    [
+def clearMaterialNodes(node_tree: bpy.types.ShaderNodeTree):
+    for node in node_tree.nodes:
+        node_tree.nodes.remove(node)
+        
+def createBsdfNode(node_tree: bpy.types.ShaderNodeTree):
+    bsdf_node: bpy.types.ShaderNodeBsdfPrincipled = node_tree.nodes.new('ShaderNodeBsdfPrincipled')     # type: ignore
+    bsdf_node.width = 300
+    try:
+        bsdf_node.subsurface_method = 'BURLEY'
+    except:
+        print("Subsurface method not found")
+    return bsdf_node
+
+def mapBsdfOutput(mat: bpy.types.Material, material_output: bpy.types.ShaderNodeOutputMaterial, bsdf_node: bpy.types.ShaderNodeBsdfPrincipled, targetIdentifier: str):
+    source = None
+    for output in bsdf_node.outputs:
+        if output.identifier == 'BSDF':
+            source = output
+            break
+        
+    if source is None:
+        print("BSDF output not found")
+        return
+    
+    target = None
+    for input in material_output.inputs:
+        if input.identifier == targetIdentifier:
+            target = input
+            break
+        
+    if target is None:
+        print("Surface input not found")
+        return
+    
+    if mat.node_tree is None:
+        print("Material has no node tree")
+        return
+    
+    mat.node_tree.links.new(source, target)
+    
+def mapGroupOutputs(mat: bpy.types.Material, group_target: bpy.types.ShaderNode, group_node: bpy.types.ShaderNodeGroup):
+    for output in group_node.outputs:
+        inputMatch = None
+        for input in group_target.inputs:
+            if input.identifier == output.name:
+                inputMatch = input
+                break
+            
+        if inputMatch is None:
+            for input in group_target.inputs:
+                if input.name == output.name:
+                    inputMatch = input
+                    break
+                
+        if inputMatch is None:
+            print(f"Input {output.name} not found in target node")
+            continue
+        
+        if mat.node_tree is None:
+            print("Material has no node tree")
+            return
+        
+        mat.node_tree.links.new(output, inputMatch)
+        
+def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,  directory, mappings: list):
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    node_height = 0
+    
+    for mapping in mappings:
+        if isinstance(mapping, PngMapping):
+            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, FloatRgbMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, BoolToFloatMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, VertexPropertyMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
+        elif isinstance(mapping, FloatValueMapping):
+            mapping.apply(targetNode)
+        elif isinstance(mapping, FloatRgbaAlphaMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, ColorSetMapping2):
+            node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, BgMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, FloatMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, UVMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, node_height)
+        elif isinstance(mapping, FloatArrayIndexedValueMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, FloatHdrMapping):
+            mapping.apply(targetNode, mat)
+        elif isinstance(mapping, FloatArrayMapping):
+            mapping.apply(targetNode, mat)
+        else:
+            print(f"Unknown mapping type {type(mapping)}")
+    
+def getEastModePosition(node_tree: bpy.types.ShaderNodeTree):
+    east = 0
+    for node in node_tree.nodes:
+        if node.location[0] > east:
+            east = node.location[0]
+            
+    return east
+
+def handleSkin(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle skin2.shpk"
+    base_mappings = [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
         FloatRgbMapping('SkinColor', 'Skin Color'),
         FloatRgbMapping('LipColor', 'Lip Color'),
-        BoolToFloatMapping('LipStick', 'Lip Color Strength')
+        FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
+        FloatRgbMapping('MainColor', 'Hair Color'),
+        FloatRgbMapping('MeshColor', 'Highlights Color'),
     ]
-)
+    
+    node_tree = mat.node_tree 
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+        
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
 
-meddle_iris = NodeGroup(
-    'meddle iris2.shpk',
-    [
+    mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+    if 'GetMaterialValue' in mat:
+        if mat["GetMaterialValue"] == 'GetMaterialValueBody':
+            mappings = []
+        elif mat["GetMaterialValue"] == 'GetMaterialValueFace':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        elif mat["GetMaterialValue"] == 'GetMaterialValueBodyJJM':
+            mappings = [FloatValueMapping(1.0, 'IS_HROTHGAR')]
+        elif mat["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
+            mappings = [FloatValueMapping(1.0, 'IS_EMISSIVE')]
+            
+    if 'CategorySkinType' in mat:
+        if mat["CategorySkinType"] == 'Body':
+            mappings = []
+        elif mat["CategorySkinType"] == 'Face':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        elif mat["CategorySkinType"] == 'Hrothgar':
+            mappings = [FloatValueMapping(1.0, 'IS_HROTHGAR')]
+          
+    clearMaterialNodes(node_tree)    
+            
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')    
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+    
+def handleHair(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle hair2.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
+        FloatRgbMapping('MainColor', 'Hair Color'),
+        FloatRgbMapping('MeshColor', 'Highlights Color'),
+    ]
+    
+    node_tree = mat.node_tree 
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+        
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+    if 'GetSubColor' in mat:
+        if mat["GetSubColor"] == 'GetSubColorFace':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        if mat["GetSubColor"] == 'GetSubColorHair':
+            mappings = []
+            
+    if 'CategoryHairType' in mat:
+        if mat["CategoryHairType"] == 'Face':
+            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+        if mat["CategoryHairType"] == 'Hair':
+            mappings = []
+            
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleIris(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle iris2.shpk"
+    base_mappings = [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
@@ -699,196 +804,645 @@ meddle_iris = NodeGroup(
         FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
         FloatArrayIndexedValueMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
 
-meddle_hair = NodeGroup(
-    'meddle hair.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
-        FloatRgbMapping('MeshColor', 'Highlights Color'),
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacter(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle character.shpk"
+    base_mappings = [
+        ColorSetMapping2(),
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    if 'GetValues' in mat:
+        if mat["GetValues"] == 'GetValuesCompatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    if 'GetValuesTextureType' in mat:
+        if mat["GetValuesTextureType"] == 'Compatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
 
-meddle_face_hair = NodeGroup(
-    'meddle face hair.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle character.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB', optional=True),
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
     ]
-)
-
-meddle_character_occlusion = NodeGroup(
-    'meddle characterocclusion.shpk',
-    [
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    if 'GetValues' in mat:
+        if mat["GetValues"] == 'GetValuesCompatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    if 'GetValuesTextureType' in mat:
+        if mat["GetValuesTextureType"] == 'Compatibility':
+            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            
+    def setupRamp(node_height, material, name): 
+        ramp = None
+        for node in material.nodes:
+            if node.name == name:
+                ramp = node
+                break
+            
+        if ramp is None:
+            ramp = material.nodes.new('ShaderNodeValToRGB')
+            
+        ramp.location = (0, node_height)
+        ramp.name = name
+        ramp.label = name
+        ramp.color_ramp.interpolation = 'CONSTANT'
+        
+        while len(ramp.color_ramp.elements) > 1:
+            ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
+            
+        return ramp
+    
+    def mapRamp(rampA, rampB, rows, rowProp, type):
+        def getValueForType(row, type):
+            if type == 'XYZ':
+                return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
+            elif type == 'Float':
+                return (row[rowProp], row[rowProp], row[rowProp], 1.0)
+            
+        odds = []
+        evens = []
+        
+        for i, row in enumerate(rows):
+            if i % 2 == 0:
+                evens.append(row)
+            else:
+                odds.append(row)
+                
+        for i, row in enumerate(evens):
+            pos = i / len(evens)
+            if i == 0:
+                rampA.color_ramp.elements[0].position = pos
+                rampA.color_ramp.elements[0].color = getValueForType(row, type)
+            else:
+                elementA = rampA.color_ramp.elements.new(pos)
+                elementA.color = getValueForType(row, type)
+                
+        for i, row in enumerate(odds):
+            pos = i / len(odds)
+            if i == 0:
+                rampB.color_ramp.elements[0].position = pos
+                rampB.color_ramp.elements[0].color = getValueForType(row, type)
+            else:
+                element = rampB.color_ramp.elements.new(pos)
+                element.color = getValueForType(row, type)
+    
+    if 'ColorTable' not in mat:
+        print("ColorTable prop not found")
+        return {'CANCELLED'}
+    
+    colorSet = mat['ColorTable']
+    if 'ColorTable' not in colorSet:
+        print("ColorTable not found in colorset")
+        return {'CANCELLED'}
+    
+    colorTable = colorSet['ColorTable']
+    
+    if 'Rows' not in colorTable:
+        print("Rows not found in colorTable")
+        return {'CANCELLED'}
+    
+    rows = colorTable['Rows']
+    
+    if len(rows) == 0:
+        print("No rows found in colorTable")
+        return {'CANCELLED'}
+    
+    clearMaterialNodes(node_tree)
+    indexMapping = PngMapping('g_SamplerIndex_PngCachePath', None, None, 'Non-Color', 'Closest')    
+    indexMapping.apply(node_tree, None, mat, directory, 300)
+        
+    indexTexture = None
+    for node in node_tree.nodes:
+        if node.name == 'g_SamplerIndex_PngCachePath':
+            indexTexture = node
+            break
+        
+    if indexTexture is None:
+        print("Index texture not found")
+        return {'CANCELLED'}
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    
+    colorRampA = setupRamp(0, node_tree, 'ColorRampA')
+    colorRampB = setupRamp(-300, node_tree, 'ColorRampB')
+    specularRampA = setupRamp(-600, node_tree, 'SpecularRampA')
+    specularRampB = setupRamp(-900, node_tree, 'SpecularRampB')
+    emissionRampA = setupRamp(-1200, node_tree, 'EmissionRampA')
+    emissionRampB = setupRamp(-1500, node_tree, 'EmissionRampB')
+    metalnessRampA = setupRamp(-1800, node_tree, 'MetalnessRampA')
+    metalnessRampB = setupRamp(-2100, node_tree, 'MetalnessRampB')
+    roughnessRampA = setupRamp(-2400, node_tree, 'RoughnessRampA')
+    roughnessRampB = setupRamp(-2700, node_tree, 'RoughnessRampB')
+    
+    mapRamp(colorRampA, colorRampB, rows, 'Diffuse', 'XYZ')
+    mapRamp(specularRampA, specularRampB, rows, 'Specular', 'XYZ')
+    mapRamp(emissionRampA, emissionRampB, rows, 'Emissive', 'XYZ')
+    mapRamp(metalnessRampA, metalnessRampB, rows, 'Metalness', 'Float')
+    mapRamp(roughnessRampA, roughnessRampB, rows, 'Roughness', 'Float')
+    
+    textureSeparate: bpy.types.ShaderNodeSeparateColor = node_tree.nodes.new('ShaderNodeSeparateColor')     # type: ignore
+    textureSeparate.location = (-200, -300)
+    node_tree.links.new(indexTexture.outputs['Color'], textureSeparate.inputs['Color'])
+    
+    allRamps = [
+        colorRampA, colorRampB, 
+        specularRampA, specularRampB, 
+        emissionRampA, emissionRampB, 
+        metalnessRampA, metalnessRampB, 
+        roughnessRampA, roughnessRampB
     ]
-)
+    
+    for ramp in allRamps:
+        node_tree.links.new(textureSeparate.outputs['Red'], ramp.inputs['Fac'])
+        
+    pair_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    pair_node.node_tree = bpy.data.node_groups["meddle colortablepair"]     # type: ignore
+    pair_node.width = 300
+    
+    node_tree.links.new(textureSeparate.outputs['Green'], pair_node.inputs['id_mix'])
+    node_tree.links.new(colorRampA.outputs['Color'], pair_node.inputs['diffuse_color_0'])
+    node_tree.links.new(colorRampB.outputs['Color'], pair_node.inputs['diffuse_color_1'])
+    node_tree.links.new(specularRampA.outputs['Color'], pair_node.inputs['specular_color_0'])
+    node_tree.links.new(specularRampB.outputs['Color'], pair_node.inputs['specular_color_1'])
+    node_tree.links.new(emissionRampA.outputs['Color'], pair_node.inputs['emissive_color_0'])
+    node_tree.links.new(emissionRampB.outputs['Color'], pair_node.inputs['emissive_color_1'])
+    node_tree.links.new(metalnessRampA.outputs['Color'], pair_node.inputs['metallic_0'])
+    node_tree.links.new(metalnessRampB.outputs['Color'], pair_node.inputs['metallic_1'])
+    node_tree.links.new(roughnessRampA.outputs['Color'], pair_node.inputs['roughness_0'])
+    node_tree.links.new(roughnessRampB.outputs['Color'], pair_node.inputs['roughness_1'])
+    mapGroupOutputs(mat, group_node, pair_node)
+    
+    east = getEastModePosition(node_tree)
+    pair_node.location = (east + 300, 300)
+    group_node.location = (east + 700, 300)
+    bsdf_node.location = (east + 1000, 300)
+    material_output.location = (east + 1300, 300)
+    
+    return {'FINISHED'}
+    
+    
 
-meddle_character_tattoo = NodeGroup(
-    'meddle charactertattoo.shpk',
-    [
+class FloatHdrMapping:
+    def __init__(self, identifier: str, destRgb: str, destMagnitude: str):
+        self.identifier = identifier
+        self.destRgb = destRgb
+        self.destMagnitude = destMagnitude
+        
+    def apply(self, targetNode: bpy.types.ShaderNode, mat: bpy.types.Material):
+        if self.identifier not in mat:
+            return
+        
+        if targetNode is None:
+            return
+        
+        value = mat[self.identifier]
+        magnitude = 0
+        for val in value:
+            if val > magnitude:
+                magnitude = val
+                
+        if magnitude == 0:
+            return
+                
+        adjustedValue = [val / magnitude for val in value]
+        
+        if len(adjustedValue) == 3:
+            adjustedValue.append(1.0)
+        
+        targetNode.inputs[self.destRgb].default_value = adjustedValue
+        targetNode.inputs[self.destMagnitude].default_value = magnitude
+
+def handleBg(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bg.shpk"
+    base_mappings = [
+        BgMapping(),
+        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
+        FloatHdrMapping('g_EmissiveColor', 'g_EmissiveColor', 'g_EmissiveColor_magnitude'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacterTattoo(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle charactertattoo.shpk"
+    base_mappings = [
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
         FloatRgbMapping('OptionColor', 'OptionColor'),
         # DecalColor mapping to g_DecalColor <- not implemented
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
 
-meddle_character = NodeGroup(
-    'meddle character.shpk',
-    [
-        #ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
-        ColorSetMapping2(),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle characterocclusion.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
 
-meddle_character_compatibility = NodeGroup(
-    'meddle character_compatibility.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', None, 'sRGB'),
-        ColorSetMapping('ColorTable', 'g_SamplerIndex_PngCachePath', 'DiffuseTableA', 'DiffuseTableB', 'SpecularTableA', 'SpecularTableB', 'color_a', 'color_b', 'specular_a', 'specular_b', 'id_mix'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-    ]
-)
-
-
-meddle_bg = NodeGroup(
-    'meddle bg.shpk',
-    [
-        # PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        # PngMapping('g_SamplerColorMap1', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB'),
-        # PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
-        # PngMapping('g_SamplerNormalMap1', 'g_SamplerNormalMap1', None, 'Non-Color'),
-        # PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
-        # PngMapping('g_SamplerSpecularMap1', 'g_SamplerSpecularMap1', None, 'Non-Color'),
-        # VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0)),
-        BgMapping()
-    ]
-)
-
-meddle_bg_prop = NodeGroup(
-    'meddle bgprop.shpk',
-    [
+def handleBgProp(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bgprop.shpk"
+    base_mappings = [
         PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
         PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
         PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
 
-meddle_bg_colorchange = NodeGroup(
-    'meddle bgcolorchange.shpk',
-    [
+def handleBgColorChange(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bgcolorchange.shpk"
+    base_mappings = [
         PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color'),
         PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
         FloatRgbMapping('StainColor', 'StainColor'),
+        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
 
-meddle_colortablepair = NodeGroup(
-    'meddle colortablepair',
-    []
-)
-meddle_colortablepair_mixer = NodeGroup(
-    'meddle colortablepair_mixer',
-    []
-)
-
-meddle_skin2 = NodeGroup(
-    'meddle skin2.shpk',
-    [
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', 'g_SamplerNormal_alpha', 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', 'g_SamplerMask_alpha', 'Non-Color'),
-        FloatRgbMapping('SkinColor', 'Skin Color'),
-        FloatRgbMapping('LipColor', 'Lip Color'),
-        FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
-        FloatRgbMapping('MainColor', 'Hair Color'),
-        FloatRgbMapping('MeshColor', 'Highlights Color'),
+def handleLightShaft(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle lightshaft.shpk"
+    base_mappings = [
+        PngMapping('g_Sampler0_PngCachePath', 'g_Sampler0', 'g_Sampler0_alpha', 'sRGB'),
+        PngMapping('g_Sampler1_PngCachePath', 'g_Sampler1', 'g_Sampler1_alpha', 'sRGB'),
+        FloatRgbMapping('g_Color', 'g_Color'),
+        VertexPropertyMapping('Color', 'vertex_color', 'vertex_alpha'),        
+        FloatArrayMapping('g_TexAnim', 'g_TexAnim', 3),
+        FloatArrayMapping('g_TexU', 'g_TexU', 3),
+        FloatArrayMapping('g_TexV', 'g_TexV', 3),
+        FloatArrayMapping('g_Ray', 'g_Ray', 3),
     ]
-)
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
 
-nodegroups: list[NodeGroup] = [
-    meddle_skin,
-    meddle_face_skin,
-    meddle_iris,
-    meddle_hair,
-    meddle_face_hair,
-    meddle_character_occlusion,
-    meddle_character_tattoo,
-    meddle_character,
-    meddle_bg,
-    meddle_bg_colorchange,
-    meddle_character_compatibility,
-    meddle_bg_prop,
-    meddle_skin2,
-    meddle_colortablepair,
-    meddle_colortablepair_mixer
-]
+    group_node.node_tree = bpy.data.node_groups[groupa_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)    
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
 
-def matchShader(mat):
-    if mat is None:
-        return (None, [])
+def handleCrystal(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle crystal.shpk"
+    base_mappings = [
+        PngMapping('g_SamplerColorMap0', 'g_SamplerColorMap0', None, 'sRGB'),
+        PngMapping('g_SamplerEnvMap', 'g_SamplerEnvMap', None, 'Non-Color'),
+        PngMapping('g_SamplerNormalMap0', 'g_SamplerNormalMap0', None, 'Non-Color'),
+        PngMapping('g_SamplerSpecularMap0', 'g_SamplerSpecularMap0', None, 'Non-Color'),
+    ]
     
-    properties = mat
-    shaderPackage = properties["ShaderPackage"]
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
     
-    print(f"Matching shader {shaderPackage} on material {mat.name}")
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
     
-    if shaderPackage is None:
-        return (None, [])
+    mappings = []
     
-    if shaderPackage == 'skin.shpk':
-        output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
-        if 'CategorySkinType' in properties:
-            if properties["CategorySkinType"] == 'Body':
-                output = (meddle_skin2, [])
-            elif properties["CategorySkinType"] == 'Face':
-                output =  (meddle_skin2, [FloatValueMapping(1.0, 'IS_FACE')])
-            elif properties["CategorySkinType"] == 'Hrothgar':
-                output = (meddle_skin2, [FloatValueMapping(1.0, 'IS_HROTHGAR')])
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+        
+def spawnFallbackTextures(mat: bpy.types.Material, directory):
+    # check props for _PngCachePath, spawn image texture nodes for each
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    clearMaterialNodes(node_tree)
+    node_height = 0
+    
+    try:
+        for prop in mat.keys():
+            if prop.endswith('_PngCachePath'):
+                print(f"Spawning texture node for {prop}")                
+                mapping = PngMapping(prop, None, None, 'sRGB', optional=True)
+                node_height = mapping.apply(node_tree, None, mat, directory, node_height)
                 
-        return output
-       
-    if shaderPackage == 'hair.shpk':
-        output = (meddle_hair, [])
-        if 'CategoryHairType' in properties:
-            if properties["CategoryHairType"] == 'Face':
-                output = (meddle_face_hair, [])
-                
-        return output
-    
-    if shaderPackage == 'iris.shpk':
-        # need to map heterochromia and limbal ring enabled values
-        return (meddle_iris, [])
-    
-    if shaderPackage == 'charactertattoo.shpk':
-        return (meddle_character_tattoo, [])
-    
-    if shaderPackage == 'characterocclusion.shpk':
-        return (meddle_character_occlusion, [])
-    
-    if shaderPackage == 'character.shpk' or shaderPackage == 'characterlegacy.shpk' or shaderPackage == 'characterscroll.shpk':
-        # check if GetValuesTextureType is 'Compatibility'
-        if 'GetValuesTextureType' in properties:
-            if properties['GetValuesTextureType'] == 'Compatibility':
-                return (meddle_character_compatibility, [])
+    except Exception as e:
+        print(f"Error spawning texture nodes: {e}")
+        return {'CANCELLED'}
             
-        return (meddle_character, [])
+    return {'FINISHED'}
     
-    if shaderPackage == 'bg.shpk':
-        return (meddle_bg, [])
+def handleShader(mat: bpy.types.Material, mesh, directory):
+    if mat is None:
+        return {'CANCELLED'}
     
-    if shaderPackage == 'bgcolorchange.shpk':
-        return (meddle_bg_colorchange, [])
+    shader_package = mat["ShaderPackage"]
+    if shader_package is None:
+        return {'CANCELLED'}
     
-    if shaderPackage == 'bgprop.shpk':
-        return (meddle_bg_prop, [])
+    print(f"Handling shader package {shader_package} on material {mat.name}")
     
-    print("No suitable shader found for " + shaderPackage + " on material " + mat.name)
-    return (None, [])
+    if shader_package == 'skin.shpk':
+        handleSkin(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'hair.shpk':
+        handleHair(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'iris.shpk':
+        handleIris(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'charactertattoo.shpk':
+        handleCharacterTattoo(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'characterocclusion.shpk':
+        handleCharacterOcclusion(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk':
+        handleCharacterSimple(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
+        handleBg(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'lightshaft.shpk':
+        handleLightShaft(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bgcolorchange.shpk':
+        handleBgColorChange(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'bgprop.shpk':
+        handleBgProp(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package == 'crystal.shpk':
+        handleCrystal(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    spawnFallbackTextures(mat, directory)
+    print(f"No suitable shader found for {shader_package} on material {mat.name}")
+    return {'CANCELLED'}
