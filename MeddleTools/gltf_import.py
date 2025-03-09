@@ -87,6 +87,10 @@ class ModelImport(bpy.types.Operator):
                 
                 imported_meshes = [obp for obp in context.selected_objects if obp.type == 'MESH']
                 
+                for obj in context.selected_objects:
+                    if "RealScale" in obj:
+                        obj.scale = [obj["RealScale"]["X"], obj["RealScale"]["Y"], obj["RealScale"]["Z"]]
+                                  
                 for mesh in imported_meshes:
                     if mesh is None:
                         continue
