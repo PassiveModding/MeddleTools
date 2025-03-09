@@ -1314,7 +1314,7 @@ def handleLightShaft(mat: bpy.types.Material, mesh, directory):
     
     group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
 
-    group_node.node_tree = bpy.data.node_groups[groupa_name]     # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
     group_node.width = 300
     
     bsdf_node = createBsdfNode(node_tree)
