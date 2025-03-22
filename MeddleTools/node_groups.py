@@ -881,12 +881,15 @@ def handleCharacter(mat: bpy.types.Material, mesh, directory):
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
 
-def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
+def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_package: str):
     group_name = "meddle character.shpk"
+    is_legacy = shader_package == 'characterlegacy.shpk'
+    is_legacy_value = 1.0 if is_legacy else 0.0
     base_mappings = [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB', optional=True),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+        FloatValueMapping(is_legacy_value, 'IS_LEGACY'),
     ]
     
     node_tree = mat.node_tree
@@ -933,6 +936,8 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
                 return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
             elif type == 'Float':
                 return (row[rowProp], row[rowProp], row[rowProp], 1.0)
+            elif type == 'FloatPct':
+                return (row[rowProp] / 100, row[rowProp] / 100, row[rowProp] / 100, 1.0)
             
         odds = []
         evens = []
@@ -944,6 +949,9 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
                 odds.append(row)
                 
         for i, row in enumerate(evens):
+            if rowProp not in row:
+                print(f"Row {i} does not have property {rowProp}")
+                continue
             pos = i / len(evens)
             if i == 0:
                 rampA.color_ramp.elements[0].position = pos
@@ -1015,12 +1023,30 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
     metalnessRampB = setupRamp(-2100, node_tree, 'MetalnessRampB')
     roughnessRampA = setupRamp(-2400, node_tree, 'RoughnessRampA')
     roughnessRampB = setupRamp(-2700, node_tree, 'RoughnessRampB')
+    glossRampA = setupRamp(-3000, node_tree, 'GlossRampA')
+    glossRampB = setupRamp(-3300, node_tree, 'GlossRampB')
+    specStrengthRampA = setupRamp(-3600, node_tree, 'SpecStrengthRampA')
+    specStrengthRampB = setupRamp(-3900, node_tree, 'SpecStrengthRampB')
+    sheenRateRampA = setupRamp(-4200, node_tree, 'SheenRateRampA')
+    sheenRateRampB = setupRamp(-4500, node_tree, 'SheenRateRampB')
+    sheenTintRampA = setupRamp(-4800, node_tree, 'SheenTintRampA')
+    sheenTintRampB = setupRamp(-5100, node_tree, 'SheenTintRampB')
+    sheenAptitudeRampA = setupRamp(-5400, node_tree, 'SheenAptitudeRampA')
+    sheenAptitudeRampB = setupRamp(-5700, node_tree, 'SheenAptitudeRampB')
+    anisotropyRampA = setupRamp(-6000, node_tree, 'AnisotropyRampA')
+    anisotropyRampB = setupRamp(-6300, node_tree, 'AnisotropyRampB')
     
     mapRamp(colorRampA, colorRampB, rows, 'Diffuse', 'XYZ')
     mapRamp(specularRampA, specularRampB, rows, 'Specular', 'XYZ')
     mapRamp(emissionRampA, emissionRampB, rows, 'Emissive', 'XYZ')
     mapRamp(metalnessRampA, metalnessRampB, rows, 'Metalness', 'Float')
     mapRamp(roughnessRampA, roughnessRampB, rows, 'Roughness', 'Float')
+    mapRamp(glossRampA, glossRampB, rows, 'GlossStrength', 'FloatPct')
+    mapRamp(specStrengthRampA, specStrengthRampB, rows, 'SpecularStrength', 'Float')
+    mapRamp(sheenRateRampA, sheenRateRampB, rows, 'SheenRate', 'Float')
+    mapRamp(sheenTintRampA, sheenTintRampB, rows, 'SheenTint', 'Float')
+    mapRamp(sheenAptitudeRampA, sheenAptitudeRampB, rows, 'SheenAptitude', 'Float')
+    mapRamp(anisotropyRampA, anisotropyRampB, rows, 'Anisotropy', 'Float')
     
     textureSeparate: bpy.types.ShaderNodeSeparateColor = node_tree.nodes.new('ShaderNodeSeparateColor')     # type: ignore
     textureSeparate.location = (-200, -300)
@@ -1031,7 +1057,13 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
         specularRampA, specularRampB, 
         emissionRampA, emissionRampB, 
         metalnessRampA, metalnessRampB, 
-        roughnessRampA, roughnessRampB
+        roughnessRampA, roughnessRampB,
+        glossRampA, glossRampB,
+        specStrengthRampA, specStrengthRampB,
+        sheenRateRampA, sheenRateRampB,
+        sheenTintRampA, sheenTintRampB,
+        sheenAptitudeRampA, sheenAptitudeRampB,
+        anisotropyRampA, anisotropyRampB
     ]
     
     for ramp in allRamps:
@@ -1048,10 +1080,22 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory):
     node_tree.links.new(specularRampB.outputs['Color'], pair_node.inputs['specular_color_1'])
     node_tree.links.new(emissionRampA.outputs['Color'], pair_node.inputs['emissive_color_0'])
     node_tree.links.new(emissionRampB.outputs['Color'], pair_node.inputs['emissive_color_1'])
+    node_tree.links.new(glossRampA.outputs['Color'], pair_node.inputs['gloss_strength_0'])
+    node_tree.links.new(glossRampB.outputs['Color'], pair_node.inputs['gloss_strength_1'])
+    node_tree.links.new(specStrengthRampA.outputs['Color'], pair_node.inputs['specular_strength_0'])
+    node_tree.links.new(specStrengthRampB.outputs['Color'], pair_node.inputs['specular_strength_1'])
     node_tree.links.new(metalnessRampA.outputs['Color'], pair_node.inputs['metallic_0'])
     node_tree.links.new(metalnessRampB.outputs['Color'], pair_node.inputs['metallic_1'])
     node_tree.links.new(roughnessRampA.outputs['Color'], pair_node.inputs['roughness_0'])
     node_tree.links.new(roughnessRampB.outputs['Color'], pair_node.inputs['roughness_1'])
+    node_tree.links.new(sheenRateRampA.outputs['Color'], pair_node.inputs['sheen_rate_0'])
+    node_tree.links.new(sheenRateRampB.outputs['Color'], pair_node.inputs['sheen_rate_1'])
+    node_tree.links.new(sheenTintRampA.outputs['Color'], pair_node.inputs['sheen_tint_0'])
+    node_tree.links.new(sheenTintRampB.outputs['Color'], pair_node.inputs['sheen_tint_1'])
+    node_tree.links.new(sheenAptitudeRampA.outputs['Color'], pair_node.inputs['sheen_apt_0'])
+    node_tree.links.new(sheenAptitudeRampB.outputs['Color'], pair_node.inputs['sheen_apt_1'])
+    node_tree.links.new(anisotropyRampA.outputs['Color'], pair_node.inputs['anisotropy_0'])
+    node_tree.links.new(anisotropyRampB.outputs['Color'], pair_node.inputs['anisotropy_1'])
     mapGroupOutputs(mat, group_node, pair_node)
     
     east = getEastModePosition(node_tree)
@@ -1420,7 +1464,7 @@ def handleShader(mat: bpy.types.Material, mesh, directory):
         return {'FINISHED'}
     
     if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk':
-        handleCharacterSimple(mat, mesh, directory)
+        handleCharacterSimple(mat, mesh, directory, shader_package)
         return {'FINISHED'}
     
     if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
