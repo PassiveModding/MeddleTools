@@ -34,7 +34,7 @@ class ShaderFixActive(bpy.types.Operator):
         if active.active_material is None:
             return {'CANCELLED'}
         
-        return handleShaderFix(active, active.active_material, self.directory)
+        return handleShaderFix(active, active.active_material, False, self.directory)
     
 class ShaderFixSelected(bpy.types.Operator):    
     bl_idname = "meddle.use_shaders_selected_objects"
@@ -59,6 +59,7 @@ class ShaderFixSelected(bpy.types.Operator):
         blend_import.import_shaders()
         
         print(f"Folder selected: {self.directory}")
+        deduplicate: bool = context.scene.model_import_settings.deduplicateMaterials
         
         for obj in selected:
             if obj is None:
@@ -67,14 +68,14 @@ class ShaderFixSelected(bpy.types.Operator):
             for slot in obj.material_slots:
                 if slot.material is not None:
                     try:
-                        handleShaderFix(obj, slot.material, self.directory)
+                        handleShaderFix(obj, slot.material, deduplicate, self.directory)
                         #shpkMtrlFixer(obj, slot.material, self.directory)
                     except Exception as e:
                         print(f"Error on {slot.material.name}: {e}")
                                     
         return {'FINISHED'}
     
-def handleShaderFix(object: bpy.types.Object, mat: bpy.types.Material, directory: str):
+def handleShaderFix(object: bpy.types.Object, mat: bpy.types.Material, deduplicate: bool, directory: str):
     if mat is None:
         return {'CANCELLED'}
     
@@ -85,10 +86,43 @@ def handleShaderFix(object: bpy.types.Object, mat: bpy.types.Material, directory
     if not isinstance(mesh, bpy.types.Mesh):
         return {'CANCELLED'}
     
-    return node_groups.handleShader(mat, mesh, directory)
-        
+    return node_groups.handleShader(mat, mesh, object, deduplicate, directory)
+      
+class MeddleClear(bpy.types.Operator):
+    bl_idname = "meddle.clear_applied"
+    bl_label = "Clear"
     
-def handleLightFix(light: bpy.types.Object, directory: str):
+    def execute(self, context):
+        # removes the 'MeddleApplied' custom property from all objects
+        for obj in bpy.data.objects:
+            if obj.type == 'MESH':
+                # get materials
+                for slot in obj.material_slots:
+                    if slot.material is not None:
+                        if 'MeddleApplied' in slot.material:
+                            print(f"Removing MeddleApplied from {slot.material.name}")
+                            del slot.material['MeddleApplied']
+                
+        return {'FINISHED'}
+      
+class LightingBoost(bpy.types.Operator):
+    bl_idname = "meddle.lighting_boost"
+    bl_label = "Lighting Boost"
+    
+    def execute(self, context):
+        if context is None:
+            return {'CANCELLED'}
+        
+        for obj in context.selected_objects:
+            if obj is None:
+                continue
+            
+            if obj.type == 'LIGHT':
+                handleLightFix(obj)
+        
+        return {'FINISHED'}
+    
+def handleLightFix(light: bpy.types.Object):
     if light is None:
         return {'CANCELLED'}
     
@@ -100,7 +134,7 @@ def handleLightFix(light: bpy.types.Object, directory: str):
         if light["LightType"] == "AreaLight":                            
             newLight = bpy.data.lights.new(name=light.name, type='AREA')                           
             newLight.size = light["ShadowNear"]
-            newLight.energy = light.data.energy
+            newLight.energy = light["HDRIntensity"] * 10
             rgbCol = light["ColorRGB"]
             newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
             newLight.use_custom_distance = True
@@ -117,10 +151,18 @@ def handleLightFix(light: bpy.types.Object, directory: str):
             lightData.shadow_soft_size = light["ShadowNear"]
             lightData.use_soft_falloff = False
             lightData.use_shadow = False
+            lightData.energy = light["HDRIntensity"]
+        if light["LightType"] == "SpotLight":                            
+            lightData.use_custom_distance = True
+            lightData.cutoff_distance = light["Range"]
+            lightData.shadow_soft_size = light["ShadowNear"]
+            lightData.use_soft_falloff = False
+            lightData.use_shadow = False
+            lightData.energy = light["HDRIntensity"] * 10
         if light["LightType"] == "CapsuleLight":
             newLight = bpy.data.lights.new(name=light.name, type='AREA')      
             newLight.shape = 'RECTANGLE'         
-            newLight.energy = light.data.energy          
+            newLight.energy = light["HDRIntensity"]   * 10       
             newLight.size = (light["BoundsMax"]["X"] / 10)
             newLight.size_y = (light["BoundsMax"]["X"] / 10)       
             rgbCol = light["ColorRGB"]

@@ -40,15 +40,14 @@ class MeddleImportPanel(bpy.types.Panel):
         
         layout = self.layout
              
-        layout.prop(context.scene.model_import_settings, 'gltfImportMode', text='Import Mode', expand=True)     
+        layout.prop(context.scene.model_import_settings, 'gltfImportMode', text='Import Mode', expand=True)    
+        layout.prop(context.scene.model_import_settings, 'deduplicateMaterials', text='Deduplicate Materials') 
         row = layout.row()
         row.operator(gltf_import.ModelImport.bl_idname, text='Import .gltf/.glb', icon='IMPORT')
         row.operator(gltf_import.ModelImportHelpHover.bl_idname, text='', icon='QUESTION')
         
         if context.scene.model_import_settings.displayImportHelp:
-            gltf_import.drawModelImportHelp(layout)
-        
-        layout.separator()
+            gltf_import.drawModelImportHelp(layout)       
         
 
 class MeddleShaderImportPanel(bpy.types.Panel):
@@ -89,6 +88,12 @@ class MeddleShaderImportPanel(bpy.types.Panel):
         
         row = col.row()
         row.label(text="Imports the Meddle shader node groups")
+        
+        row = layout.row()
+        row.operator(shader_fix.LightingBoost.bl_idname, text='Reparse Lights')
+        
+        row = layout.row()
+        row.operator(shader_fix.MeddleClear.bl_idname, text='Clear Applied Status')
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
@@ -156,6 +161,8 @@ classes = [
     blend_import.ShaderHelper,
     shader_fix.ShaderFixActive,
     shader_fix.ShaderFixSelected,
+    shader_fix.LightingBoost,
+    shader_fix.MeddleClear,
     gltf_import.ModelImport,
     MeddleImportPanel,
     MeddleShaderImportPanel,
