@@ -49,6 +49,11 @@ class ModelImportSettings(bpy.types.PropertyGroup):
         name="Display Import Help",
         default=False,
     )
+    
+    deduplicateMaterials: bpy.props.BoolProperty(
+        name="Deduplicate Materials",
+        default=True,
+    )
 
 class ModelImport(bpy.types.Operator):
     bl_idname = "meddle.import_gltf"
@@ -86,6 +91,7 @@ class ModelImport(bpy.types.Operator):
                     bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
                 
                 imported_meshes = [obp for obp in context.selected_objects if obp.type == 'MESH']
+                deduplicate: bool = context.scene.model_import_settings.deduplicateMaterials
                 
                 for obj in context.selected_objects:
                     if "RealScale" in obj:
@@ -98,7 +104,7 @@ class ModelImport(bpy.types.Operator):
                     for slot in mesh.material_slots:
                         if slot.material is not None:
                             try:
-                                shader_fix.handleShaderFix(mesh, slot.material, cache_dir)
+                                shader_fix.handleShaderFix(mesh, slot.material, deduplicate, cache_dir)
                             except Exception as e:
                                 print(e)
                                 
@@ -109,7 +115,7 @@ class ModelImport(bpy.types.Operator):
                         continue
                     
                     try:
-                        shader_fix.handleLightFix(light, cache_dir)
+                        shader_fix.handleLightFix(light)
                     except Exception as e:
                         print(e)
                             

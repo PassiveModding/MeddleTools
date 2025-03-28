@@ -1433,7 +1433,7 @@ def spawnFallbackTextures(mat: bpy.types.Material, directory):
             
     return {'FINISHED'}
     
-def handleShader(mat: bpy.types.Material, mesh, directory):
+def handleShader(mat: bpy.types.Material, mesh, object, deduplicate: bool, directory):
     if mat is None:
         return {'CANCELLED'}
     
@@ -1467,24 +1467,45 @@ def handleShader(mat: bpy.types.Material, mesh, directory):
         handleCharacterSimple(mat, mesh, directory, shader_package)
         return {'FINISHED'}
     
+    if shader_package == 'bgcolorchange.shpk':
+        handleBgColorChange(mat, mesh, directory)
+        mat['MeddleApplied'] = True
+        return {'FINISHED'}
+    
+    # check if material exists already in scene by same name
+    # note: any materials with additional inputs outside the .mtrl values, should not be deduplicated as they should be unique to the object
+    if 'Material' in mat and deduplicate:
+        for obj in (o for o in bpy.data.objects if o.type == 'MESH'):
+            for slot in obj.material_slots:
+                if slot.material is None:
+                    continue
+                if 'Material' in slot.material and slot.material['Material'] == mat['Material'] and 'MeddleApplied' in slot.material and slot.material['MeddleApplied'] == True:
+                    # there is another object in the scene with the same material as this. Replace object material with the one in the scene
+                    for objSlot in object.material_slots:
+                        if objSlot.material.name == mat.name:
+                            objSlot.material = slot.material
+                            print(f"Material {mat.name} already exists in scene, using existing material")
+                            return {'FINISHED'}
+                
+    
     if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
         handleBg(mat, mesh, directory)
+        mat['MeddleApplied'] = True
         return {'FINISHED'}
     
     if shader_package == 'lightshaft.shpk':
         handleLightShaft(mat, mesh, directory)
-        return {'FINISHED'}
-    
-    if shader_package == 'bgcolorchange.shpk':
-        handleBgColorChange(mat, mesh, directory)
+        mat['MeddleApplied'] = True
         return {'FINISHED'}
     
     if shader_package == 'bgprop.shpk':
         handleBgProp(mat, mesh, directory)
+        mat['MeddleApplied'] = True
         return {'FINISHED'}
     
     if shader_package == 'crystal.shpk':
         handleCrystal(mat, mesh, directory)
+        mat['MeddleApplied'] = True
         return {'FINISHED'}
     
     spawnFallbackTextures(mat, directory)
