@@ -134,7 +134,7 @@ def handleLightFix(light: bpy.types.Object):
         if light["LightType"] == "AreaLight":                            
             newLight = bpy.data.lights.new(name=light.name, type='AREA')                           
             newLight.size = light["ShadowNear"]
-            newLight.energy = light["HDRIntensity"] * 10
+            newLight.energy = light["HDRIntensity"]
             rgbCol = light["ColorRGB"]
             newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
             newLight.use_custom_distance = True
@@ -158,11 +158,11 @@ def handleLightFix(light: bpy.types.Object):
             lightData.shadow_soft_size = light["ShadowNear"]
             lightData.use_soft_falloff = False
             lightData.use_shadow = False
-            lightData.energy = light["HDRIntensity"] * 10
+            lightData.energy = light["HDRIntensity"]
         if light["LightType"] == "CapsuleLight":
             newLight = bpy.data.lights.new(name=light.name, type='AREA')      
             newLight.shape = 'RECTANGLE'         
-            newLight.energy = light["HDRIntensity"]   * 10       
+            newLight.energy = light["HDRIntensity"]    
             newLight.size = (light["BoundsMax"]["X"] / 10)
             newLight.size_y = (light["BoundsMax"]["X"] / 10)       
             rgbCol = light["ColorRGB"]
