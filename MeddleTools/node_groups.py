@@ -1463,13 +1463,12 @@ def handleShader(mat: bpy.types.Material, mesh, object, deduplicate: bool, direc
         handleCharacterOcclusion(mat, mesh, directory)
         return {'FINISHED'}
     
-    if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk':
+    if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk' or shader_package == 'characterinc.shpk':
         handleCharacterSimple(mat, mesh, directory, shader_package)
         return {'FINISHED'}
     
     if shader_package == 'bgcolorchange.shpk':
         handleBgColorChange(mat, mesh, directory)
-        mat['MeddleApplied'] = True
         return {'FINISHED'}
     
     # check if material exists already in scene by same name
