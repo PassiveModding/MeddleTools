@@ -40,10 +40,10 @@ class PngMapping:
         
         # if image exists in scene, use that instead of loading from file
         for img in bpy.data.images:
-            if img.filepath == path.join(directory, pathStr):
+            if img.filepath == path.join(directory, pathStr) and img.colorspace_settings.name == self.color_space:
                 texture.image = img
                 break
-        else:        
+        else:
             if not path.exists(path.join(directory, pathStr)):
                 print(f"Texture {path.join(directory, pathStr)} not found")
                 return node_height - 300
@@ -1423,7 +1423,7 @@ def spawnFallbackTextures(mat: bpy.types.Material, directory):
     try:
         for prop in mat.keys():
             if prop.endswith('_PngCachePath'):
-                print(f"Spawning texture node for {prop}")                
+                print(f"Spawning texture node for {prop}")            
                 mapping = PngMapping(prop, None, None, 'sRGB', optional=True)
                 node_height = mapping.apply(node_tree, None, mat, directory, node_height)
                 
