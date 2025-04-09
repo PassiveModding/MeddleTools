@@ -885,11 +885,14 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     group_name = "meddle character.shpk"
     is_legacy = shader_package == 'characterlegacy.shpk'
     is_legacy_value = 1.0 if is_legacy else 0.0
+    is_stocking = shader_package == 'characterstockings.shpk'
+    is_stocking_value = 1.0 if is_stocking else 0.0
     base_mappings = [
         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB', optional=True),
         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
         FloatValueMapping(is_legacy_value, 'IS_LEGACY'),
+        FloatValueMapping(is_stocking_value, 'IS_STOCKING'),
     ]
     
     node_tree = mat.node_tree
@@ -904,11 +907,14 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     mappings = []
     if 'GetValues' in mat:
         if mat["GetValues"] == 'GetValuesCompatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            mappings.extend([FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
             
     if 'GetValuesTextureType' in mat:
         if mat["GetValuesTextureType"] == 'Compatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+            mappings.extend([FloatValueMapping(1.0, 'IS_COMPATIBILITY')])
+            
+    if 'SkinColor' in mat:
+        mappings.extend([FloatRgbMapping('SkinColor', 'SkinColor')])
             
     def setupRamp(node_height, material, name): 
         ramp = None
@@ -1463,7 +1469,8 @@ def handleShader(mat: bpy.types.Material, mesh, object, deduplicate: bool, direc
         handleCharacterOcclusion(mat, mesh, directory)
         return {'FINISHED'}
     
-    if shader_package == 'character.shpk' or shader_package == 'characterlegacy.shpk' or shader_package == 'characterscroll.shpk' or shader_package == 'characterglass.shpk' or shader_package == 'characterinc.shpk':
+    if shader_package in ('character.shpk', 'characterlegacy.shpk', 'characterscroll.shpk', 
+                          'characterglass.shpk', 'characterinc.shpk', 'characterstockings.shpk'):
         handleCharacterSimple(mat, mesh, directory, shader_package)
         return {'FINISHED'}
     
