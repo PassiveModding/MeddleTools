@@ -1,6 +1,17 @@
 import bpy
 from os import path
-
+   
+def setInputSafe(node, input_name: str, value):
+    if input_name in node.inputs:
+        node.inputs[input_name].default_value = value
+    else:
+        print(f"Input {input_name} not found in node {node.name}")
+        
+def linkInputSafe(material, source, groupNode, input_name):
+    if input_name in groupNode.inputs:
+        material.links.new(source, groupNode.inputs[input_name])
+    else:
+        print(f"Input {input_name} not found in group node {groupNode.name}")
 
 class NodeGroup:
     def __init__(self, name: str, mapping_definitions: list):
@@ -20,6 +31,13 @@ class PngMapping:
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
     
     def apply(self, material, groupNode, properties, directory, node_height):
+        if self.color_dest is not None and self.color_dest not in groupNode.inputs:
+            print(f"Property {self.color_dest} not found in group node")
+            return node_height - 300
+        
+        if self.alpha_dest is not None and self.alpha_dest not in groupNode.inputs:
+            print(f"Property {self.alpha_dest} not found in group node")
+            return node_height - 300
         
         if self.property_name not in properties:
             if self.optional:
@@ -55,9 +73,11 @@ class PngMapping:
         texture.interpolation = self.interpolation
         
         if self.alpha_dest is not None:
-            material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
+            #material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
+            linkInputSafe(material, texture.outputs['Alpha'], groupNode, self.alpha_dest)
         if self.color_dest is not None:
-            material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
+            #material.links.new(texture.outputs['Color'], groupNode.inputs[self.color_dest])
+            linkInputSafe(material, texture.outputs['Color'], groupNode, self.color_dest)
         
         return node_height - 300
     
@@ -71,7 +91,7 @@ class VertexPropertyMapping:
     def __repr__(self):
         return f"VertexPropertyMapping({self.property_name}, {self.color_dest})"
     
-    def apply(self, material, mesh, groupNode, node_height):           
+    def apply(self, material, mesh, groupNode, node_height):    
         if mesh is None:
             return node_height - 300
         
@@ -86,9 +106,11 @@ class VertexPropertyMapping:
 
         if use_default_colors:
             if self.color_dest is not None:
-                groupNode.inputs[self.color_dest].default_value = self.default_color                
+                #groupNode.inputs[self.color_dest].default_value = self.default_color      
+                setInputSafe(groupNode, self.color_dest, self.default_color)          
             if self.alpha_dest is not None:
-                groupNode.inputs[self.alpha_dest].default_value = self.default_color[3]            
+                #groupNode.inputs[self.alpha_dest].default_value = self.default_color[3]       
+                setInputSafe(groupNode, self.alpha_dest, self.default_color[3])     
             return node_height - 300
         else:
             vertexColor = material.nodes.new('ShaderNodeVertexColor')
@@ -100,9 +122,11 @@ class VertexPropertyMapping:
             vertexColor.location = (-500, node_height)        
             
             if self.color_dest is not None:
-                material.links.new(vertexColor.outputs['Color'], groupNode.inputs[self.color_dest])                
+                #material.links.new(vertexColor.outputs['Color'], groupNode.inputs[self.color_dest])          
+                linkInputSafe(material, vertexColor.outputs['Color'], groupNode, self.color_dest)      
             if self.alpha_dest is not None:
-                material.links.new(vertexColor.outputs['Alpha'], groupNode.inputs[self.alpha_dest])            
+                #material.links.new(vertexColor.outputs['Alpha'], groupNode.inputs[self.alpha_dest])    
+                linkInputSafe(material, vertexColor.outputs['Alpha'], groupNode, self.alpha_dest)        
             return node_height - 300
         
     
@@ -124,7 +148,8 @@ class FloatRgbMapping:
         if len(value_arr) == 3:
             value_arr.append(1.0)
             
-        groupNode.inputs[self.color_dest].default_value = value_arr
+        #groupNode.inputs[self.color_dest].default_value = value_arr
+        setInputSafe(groupNode, self.color_dest, value_arr)
         
 class FloatArrayMapping:
     def __init__(self, property_name: str, dest: str, destLength: int):
@@ -146,7 +171,8 @@ class FloatArrayMapping:
         while len(value_arr) < self.destLength:
             value_arr.append(0.0)
             
-        groupNode.inputs[self.dest].default_value = value_arr
+        #groupNode.inputs[self.dest].default_value = value_arr
+        setInputSafe(groupNode, self.dest, value_arr)
         
 class FloatRgbaAlphaMapping:
     def __init__(self, property_name: str, color_dest: str):
@@ -166,7 +192,8 @@ class FloatRgbaAlphaMapping:
         if len(value_arr) == 3:
             value_arr.append(1.0)
             
-        groupNode.inputs[self.color_dest].default_value = value_arr[3]
+        #groupNode.inputs[self.color_dest].default_value = value_arr[3]
+        setInputSafe(groupNode, self.color_dest, value_arr[3])
         
 class FloatValueMapping:
     def __init__(self, value: float, property_dest: str):
@@ -176,8 +203,9 @@ class FloatValueMapping:
     def __repr__(self):
         return f"FloatValueMappping({self.value}, {self.property_dest})"
     
-    def apply(self, groupNode):                        
-        groupNode.inputs[self.property_dest].default_value = self.value           
+    def apply(self, groupNode):                    
+        #groupNode.inputs[self.property_dest].default_value = self.value           
+        setInputSafe(groupNode, self.property_dest, self.value)
             
 class ColorSetMapping2:
     def __init__(self, index_texture_name: str = 'g_SamplerIndex_PngCachePath', color_table_name: str = 'ColorTable'):
@@ -221,7 +249,8 @@ class ColorSetMapping2:
         # separate color
         textureSeparate = material.nodes.new('ShaderNodeSeparateColor')
         textureSeparate.location = (-300, node_height)
-        material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
+        #material.links.new(texture.outputs['Color'], textureSeparate.inputs['Color'])
+        linkInputSafe(material, texture.outputs['Color'], textureSeparate, 'Color')
         
         odds = []
         evens = []
@@ -247,7 +276,8 @@ class ColorSetMapping2:
             pairPositions.append(pairHorizontalPos)
             
             # link index green to id_mix
-            material.links.new(textureSeparate.outputs['Green'], pairNode.inputs['id_mix'])
+            #material.links.new(textureSeparate.outputs['Green'], pairNode.inputs['id_mix'])
+            linkInputSafe(material, textureSeparate.outputs['Green'], pairNode, 'id_mix')
             
             # map inputs
             # 'Diffuse': {'X': 0.03692627, 'Y': 0.029800415, 'Z': 0.012779236}, 'Specular': {'X': 0.48999023, 'Y': 0.48999023, 'Z': 0.48999023}, 'Emissive': {'X': 0, 'Y': 0, 'Z': 0}, 'SheenRate': 0.099975586, 'SheenTint': 0.19995117, 'SheenAptitude': 5, 'Roughness': 0.5, 'Metalness': 0, 'Anisotropy': 0, 'SphereMask': 0, 'ShaderId': 0, 'TileIndex': 12, 'TileAlpha': 1, 'SphereIndex': 0, 'TileMatrix': {'UU': 4.3320312, 'UV': 2.5, 'VU': -50, 'VV': 86.625}}
@@ -286,17 +316,23 @@ class ColorSetMapping2:
             tileIndexNorm1Node = setupImageNode(tileIndexNormPath1, (pairHorizontalPos - 300, node_height - 600), f'tile_norm_array_{tileIndex1}')
             tileIndexOrb1Node = setupImageNode(tileIndexOrbPath1, (pairHorizontalPos - 300, node_height - 900), f'tile_orb_array_{tileIndex1}')
             
-            material.links.new(tileIndexNorm0Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_0'])
-            material.links.new(tileIndexOrb0Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_0'])
-            material.links.new(tileIndexNorm1Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_1'])
-            material.links.new(tileIndexOrb1Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_1'])
+            # material.links.new(tileIndexNorm0Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_0'])
+            # material.links.new(tileIndexOrb0Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_0'])
+            # material.links.new(tileIndexNorm1Node.outputs['Color'], pairNode.inputs['tile_norm_array_texture_1'])
+            # material.links.new(tileIndexOrb1Node.outputs['Color'], pairNode.inputs['tile_orb_array_texture_1'])
+            linkInputSafe(material, tileIndexNorm0Node.outputs['Color'], pairNode, 'tile_norm_array_texture_0')
+            linkInputSafe(material, tileIndexOrb0Node.outputs['Color'], pairNode, 'tile_orb_array_texture_0')
+            linkInputSafe(material, tileIndexNorm1Node.outputs['Color'], pairNode, 'tile_norm_array_texture_1')
+            linkInputSafe(material, tileIndexOrb1Node.outputs['Color'], pairNode, 'tile_orb_array_texture_1')
                         
             for key, value in evenInputs.items():
                 if key in pairNode.inputs:
-                    pairNode.inputs[key].default_value = value
+                    #pairNode.inputs[key].default_value = value
+                    setInputSafe(pairNode, key, value)
             for key, value in oddInputs.items():
                 if key in pairNode.inputs:
-                    pairNode.inputs[key].default_value = value
+                    #pairNode.inputs[key].default_value = value
+                    setInputSafe(pairNode, key, value)
             
             pairHorizontalPos += 600
                     
@@ -315,9 +351,12 @@ class ColorSetMapping2:
             pairMixer.node_tree = bpy.data.node_groups['meddle colortablepair_mixer']
             horizontal_pos = pairPositions[i]
             pairMixer.location = (horizontal_pos + 200, node_height)
-            material.links.new(textureSeparate.outputs['Red'], pairMixer.inputs['id_mix'])
-            pairMixer.inputs['idx_0'].default_value = prev_idx
-            pairMixer.inputs['idx_1'].default_value = i
+            #material.links.new(textureSeparate.outputs['Red'], pairMixer.inputs['id_mix'])
+            linkInputSafe(material, textureSeparate.outputs['Red'], pairMixer, 'id_mix')
+            #pairMixer.inputs['idx_0'].default_value = prev_idx
+            #pairMixer.inputs['idx_1'].default_value = i
+            setInputSafe(pairMixer, 'idx_0', prev_idx)
+            setInputSafe(pairMixer, 'idx_1', i)
             self.mapPairMixer(material, pairMixer, pair, prev_pair)
             prev_pair = pairMixer  
             prev_idx = i
@@ -333,11 +372,13 @@ class ColorSetMapping2:
         for output in prev_pair.outputs:
             mappedName = f'{output.name}_0'
             if mappedName in pairMixer.inputs:
-                material.links.new(output, pairMixer.inputs[mappedName])
+                #material.links.new(output, pairMixer.inputs[mappedName])
+                linkInputSafe(material, output, pairMixer, mappedName)
         for output in pair.outputs:
             mappedName = f'{output.name}_1'
             if mappedName in pairMixer.inputs:
-                material.links.new(output, pairMixer.inputs[mappedName])
+                #material.links.new(output, pairMixer.inputs[mappedName])
+                linkInputSafe(material, output, pairMixer, mappedName)
         
     
     def fixColorArray(self, color):
@@ -388,9 +429,9 @@ class BoolToFloatMapping:
     
     def apply(self, groupNode, properties):
         if properties[self.property_name]:
-            groupNode.inputs[self.float_dest].default_value = 1.0
+            setInputSafe(groupNode, self.float_dest, 1.0)
         else:
-            groupNode.inputs[self.float_dest].default_value = 0.0
+            setInputSafe(groupNode, self.float_dest, 0.0)
             
 class FloatMapping:
     def __init__(self, property_name: str, float_dest: str):
@@ -409,7 +450,8 @@ class FloatMapping:
             val_arr = properties[property_name].to_list()
             return val_arr[0]
         
-        groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name)
+        #groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name)
+        setInputSafe(groupNode, self.float_dest, getFixedValueFloat(properties, self.property_name))
         
 class FloatArrayIndexedValueMapping:
     def __init__(self, property_name: str, float_dest: str, index: int):
@@ -429,8 +471,8 @@ class FloatArrayIndexedValueMapping:
             val_arr = properties[property_name].to_list()
             return val_arr[index]
         
-        groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name, self.index)
-
+        #groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name, self.index)
+        setInputSafe(groupNode, self.float_dest, getFixedValueFloat(properties, self.property_name, self.index))
         
 class UVMapping:
     def __init__(self, uv_map_name: str, uv_dest: str):
@@ -456,7 +498,8 @@ class UVMapping:
         uvMapNode = material.nodes.new('ShaderNodeUVMap')
         uvMapNode.uv_map = self.uv_map_name
         uvMapNode.location = (-500, node_height)
-        material.links.new(uvMapNode.outputs['UV'], groupNode.inputs[self.uv_dest])
+        #material.links.new(uvMapNode.outputs['UV'], groupNode.inputs[self.uv_dest])
+        linkInputSafe(material, uvMapNode.outputs['UV'], groupNode, self.uv_dest)
         
         return node_height - 300
         
@@ -487,9 +530,12 @@ class BgMapping:
             vectorMapping = material.nodes.new('ShaderNodeMapping')
             vectorMapping.location = (0, node_height)
             
-            material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
-            material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
-            material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
+            # material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
+            # material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
+            # material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
+            linkInputSafe(material, uvMapNode.outputs['UV'], vectorMapping, 'Vector')
+            linkInputSafe(material, uvMapNode.outputs['UV'], voronoiTexture, 'Vector')
+            linkInputSafe(material, voronoiTexture.outputs['Color'], vectorMapping, 'Rotation')
         
         # connect 0 maps.
         # only connect vertex property mapping IF 1 maps exist
@@ -967,6 +1013,9 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
                 elementA.color = getValueForType(row, type)
                 
         for i, row in enumerate(odds):
+            if rowProp not in row:
+                print(f"Row {i} does not have property {rowProp}")
+                continue
             pos = i / len(odds)
             if i == 0:
                 rampB.color_ramp.elements[0].position = pos
@@ -1141,8 +1190,10 @@ class FloatHdrMapping:
         if len(adjustedValue) == 3:
             adjustedValue.append(1.0)
         
-        targetNode.inputs[self.destRgb].default_value = adjustedValue
-        targetNode.inputs[self.destMagnitude].default_value = magnitude
+        #targetNode.inputs[self.destRgb].default_value = adjustedValue
+        #targetNode.inputs[self.destMagnitude].default_value = magnitude
+        setInputSafe(targetNode, self.destRgb, adjustedValue)
+        setInputSafe(targetNode, self.destMagnitude, magnitude)
 
 def handleBg(mat: bpy.types.Material, mesh, directory):
     group_name = "meddle bg.shpk"
