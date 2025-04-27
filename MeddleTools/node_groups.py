@@ -45,8 +45,8 @@ class PngMapping:
             print(f"Property {self.property_name} not found in material")
             return node_height - 300
         
-        
-        pathStr = properties[self.property_name]
+        pathStr = bpy.path.native_pathsep(properties[self.property_name])
+
         if pathStr is None or not isinstance(pathStr, str):
             print(f"Property {self.property_name} is not a string")
             return node_height - 300
@@ -235,7 +235,7 @@ class ColorSetMapping2:
         
         # spawn index texture
         texture = material.nodes.new('ShaderNodeTexImage')
-        pathStr = properties[self.index_texture_name]
+        pathStr = bpy.path.native_pathsep(properties[self.index_texture_name])
         if pathStr is None or not isinstance(pathStr, str):
             return node_height - 300
         
@@ -543,6 +543,8 @@ class BgMapping:
             if texture_name not in properties:
                 return None
             
+            pathStr = bpy.path.native_pathsep(properties[texture_name])
+
             if properties[texture_name] is None:
                 return None
             
@@ -553,11 +555,11 @@ class BgMapping:
             # if image loaded already, use that
             img = None
             for image in bpy.data.images:
-                if image.filepath == path.join(directory, properties[texture_name]):
+                if image.filepath == path.join(directory, pathStr):
                     img = image
                     break
             else:
-                img = bpy.data.images.load(path.join(directory, properties[texture_name]))
+                img = bpy.data.images.load(path.join(directory, pathStr))
                 
             texture = material.nodes.new('ShaderNodeTexImage')
             texture.image = img
