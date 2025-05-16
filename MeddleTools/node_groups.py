@@ -2,6 +2,14 @@ import bpy
 from os import path
    
 def setInputSafe(node, input_name: str, value):
+    if node is None:
+        print("Node is None")
+        return
+    
+    if input_name is None:
+        print("Input name is None")
+        return
+    
     if input_name in node.inputs:
         node.inputs[input_name].default_value = value
     else:
@@ -52,6 +60,7 @@ class PngMapping:
             return node_height - 300
         
         if pathStr.endswith('.tex'):
+            print(f"Property {self.property_name} is a .tex file, amending to .png")
             pathStr = pathStr + '.png'
         
         texture = material.nodes.new('ShaderNodeTexImage')
@@ -144,6 +153,7 @@ class FloatRgbMapping:
             value_arr = properties[self.property_name].to_list()
         else:
             print(f"Property {self.property_name} not found in material")
+            return
             
         if len(value_arr) == 3:
             value_arr.append(1.0)
@@ -157,7 +167,7 @@ class FloatArrayMapping:
         self.dest = dest
         self.destLength = destLength
         
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"FloatArrayMapping({self.property_name}, {self.dest})"
     
     def apply(self, groupNode, properties):
@@ -188,6 +198,7 @@ class FloatRgbaAlphaMapping:
             value_arr = properties[self.property_name].to_list()
         else:
             print(f"Property {self.property_name} not found in material")
+            return
             
         if len(value_arr) == 3:
             value_arr.append(1.0)
@@ -1468,6 +1479,51 @@ def handleCrystal(mat: bpy.types.Material, mesh, directory):
     bsdf_node.location = (east + 600, 300)
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
+
+def handleWater(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle water.shpk"
+    base_mappings = [
+        FloatRgbMapping('0xD315E728', 'unk_WaterColor'),
+        FloatRgbMapping('unk_WaterColor', 'unk_WaterColor'),
+        
+        FloatRgbMapping('g_RefractionColor', 'g_RefractionColor'),
+        FloatRgbMapping('g_WhitecapColor', 'g_WhitecapColor'),     
+        FloatMapping('g_Transparency', 'g_Transparency'),        
+        PngMapping('g_SamplerWaveMap_PngCachePath', 'g_SamplerWaveMap', 'g_SamplerWaveMap_alpha', 'Non-Color'), # water river
+        PngMapping('g_SamplerWaveMap1_PngCachePath', 'g_SamplerWaveMap1', 'g_SamplerWaveMap1_alpha', 'Non-Color'), # water only
+        PngMapping('g_SamplerWhitecapMap_PngCachePath', 'g_SamplerWhitecapMap', 'g_SamplerWhitecapMap_alpha', 'Non-Color'), # water river
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+    
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 300, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    
+    return {'FINISHED'}
         
 def spawnFallbackTextures(mat: bpy.types.Material, directory):
     # check props for _PngCachePath, spawn image texture nodes for each
@@ -1529,6 +1585,10 @@ def handleShader(mat: bpy.types.Material, mesh, object, deduplicate: bool, direc
     
     if shader_package == 'bgcolorchange.shpk':
         handleBgColorChange(mat, mesh, directory)
+        return {'FINISHED'}
+    
+    if shader_package in ('water.shpk', 'river.shpk'):
+        handleWater(mat, mesh, directory)
         return {'FINISHED'}
     
     # check if material exists already in scene by same name
