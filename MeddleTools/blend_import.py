@@ -1,18 +1,6 @@
 import bpy
 from os import path
 from . import node_groups
-
-
-
-def import_shaders():        
-    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
-    
-    with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
-        for node_group in data_from.node_groups:
-            if node_group in bpy.data.node_groups:
-                print(f"Node group {node_group} already exists")
-                continue
-            bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
     
 class ImportShaders(bpy.types.Operator):
 
@@ -23,7 +11,17 @@ class ImportShaders(bpy.types.Operator):
         import_shaders()
             
         return {'FINISHED'}
+
+def import_shaders():        
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     
+    with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
+        for node_group in data_from.node_groups:
+            if node_group in bpy.data.node_groups:
+                print(f"Node group {node_group} already exists")
+                continue
+            bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
+
 def replace_shaders():
     blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     
