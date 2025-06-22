@@ -11,10 +11,10 @@ repo_release_download_url = "https://github.com/PassiveModding/MeddleTools/relea
 repo_release_url = "https://api.github.com/repos/PassiveModding/MeddleTools/releases/latest"
 repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
 sponsor_url = "https://github.com/sponsors/PassiveModding"
+carrd_url = "https://meddle.carrd.co/"
 current_version = "Unknown"
 latest_version = "Unknown"
 latest_version_blob = None
-
   
 def getLatestVersion():
     response = requests.get(repo_release_url)
@@ -97,7 +97,7 @@ class MeddleShaderImportPanel(bpy.types.Panel):
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
-    bl_label = "Credits"
+    bl_label = "Credits & Version"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_context = "objectmode"
@@ -105,18 +105,6 @@ class MeddleCreditPanel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-                
-        if latest_version != "Unknown" and current_version != "Unknown":
-            if latest_version != current_version:
-                box = layout.box()
-                col = box.column()
-                row = col.row()
-                row.label(text=f"New version available: {latest_version}")
-                row = col.row()
-                row.operator("wm.url_open", text="Download").url = repo_release_download_url
-        else:
-            row = layout.row()
-            row.label(text="Failed to check for updates")
         
         section = layout.box()
         col = section.column()
@@ -155,7 +143,38 @@ class MeddleCreditPanel(bpy.types.Panel):
         row = layout.row()
         row.operator("wm.url_open", text="Support Meddle").url = sponsor_url
     
+class MeddleHeaderPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_MeddleHeaderPanel"
+    bl_label = ""
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_context = "objectmode"
+    bl_category = "Meddle Tools" 
+    
+    def draw_header(self, context):
+        self.layout.label(text=f"Meddle Tools {current_version}", icon='INFO')
+        
+    def draw(self, context):
+        layout = self.layout
+        
+        layout.operator("wm.url_open", text="Support & Links", icon="HEART").url = carrd_url
+        
+        row = layout.row()
+        row.operator("wm.url_open", text="Github", icon="HELP").url = repo_url
+        row.operator("wm.url_open", text="Issues", icon="BOOKMARKS").url = repo_issues_url
+        
+        if latest_version != "Unknown" and current_version != "Unknown":
+            if latest_version != current_version:
+                box = layout.box()
+                col = box.column()
+                row = col.row()
+                row.label(text=f"New version available: {latest_version}")
+                row = col.row()
+                row.operator("wm.url_open", text="Download").url = repo_release_download_url
+        
+    
 classes = [
+    MeddleHeaderPanel,
     blend_import.ImportShaders,
     blend_import.ReplaceShaders,
     blend_import.ShaderHelper,
