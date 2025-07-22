@@ -96,10 +96,13 @@ class ModelImport(bpy.types.Operator):
                 # for obj in context.selected_objects:
                 #     if "RealScale" in obj:
                 #         obj.scale = [obj["RealScale"]["X"], obj["RealScale"]["Y"], obj["RealScale"]["Z"]]
+                           
+                for obj in context.selected_objects:                    
+                    shader_fix.setCollection(obj, context)
                                   
                 for mesh in imported_meshes:
                     if mesh is None:
-                        continue
+                        continue                    
                     
                     for slot in mesh.material_slots:
                         if slot.material is not None:

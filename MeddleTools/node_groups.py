@@ -27,13 +27,14 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False):
+    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False, extension: str = 'REPEAT'):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
         self.color_space = color_space
         self.interpolation = interpolation
         self.optional = optional
+        self.extension = extension
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
@@ -80,6 +81,7 @@ class PngMapping:
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
         texture.interpolation = self.interpolation
+        texture.extension = self.extension
         
         if self.alpha_dest is not None:
             #material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
@@ -458,7 +460,10 @@ class FloatMapping:
             return
         
         def getFixedValueFloat(properties, property_name):
-            val_arr = properties[property_name].to_list()
+            propVal = properties[property_name]
+            if isinstance(propVal, (int, float)):
+                return propVal
+            val_arr = propVal.to_list()
             return val_arr[0]
         
         #groupNode.inputs[self.float_dest].default_value = getFixedValueFloat(properties, self.property_name)
@@ -746,6 +751,8 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
         FloatRgbaAlphaMapping('LipColor', 'Lip Color Strength'),
         FloatRgbMapping('MainColor', 'Hair Color'),
         FloatRgbMapping('MeshColor', 'Highlights Color'),
+        FloatRgbMapping('DecalColor', 'Decal Color'),
+        FloatRgbaAlphaMapping('DecalColor', 'Decal Color Strength'),
     ]
     
     node_tree = mat.node_tree 
@@ -758,11 +765,13 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
         return {'CANCELLED'}
 
     mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+    isFace = False
     if 'GetMaterialValue' in mat:
         if mat["GetMaterialValue"] == 'GetMaterialValueBody':
             mappings = []
         elif mat["GetMaterialValue"] == 'GetMaterialValueFace':
-            mappings = [FloatValueMapping(1.0, 'IS_FACE')]
+            mappings = [FloatValueMapping(1.0, 'IS_FACE'), PngMapping("Decal_PngCachePath", "DecalTexture", None, "Non-Color", "Linear", True, "CLIP")]
+            isFace = True
         elif mat["GetMaterialValue"] == 'GetMaterialValueBodyJJM':
             mappings = [FloatValueMapping(1.0, 'IS_HROTHGAR')]
         elif mat["GetMaterialValue"] == 'GetMaterialValueFaceEmissive':
@@ -788,10 +797,44 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')    
     mapGroupOutputs(mat, bsdf_node, group_node)
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    
+    decalUv_node: bpy.types.ShaderNodeGroup = None
+    uvMapNode = None
+    if isFace and 'meddle decaluv' in bpy.data.node_groups:
+        decalUv_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')     # type: ignore
+        decalUv_node.node_tree = bpy.data.node_groups['meddle decaluv']    # type: ignore
+        decalUv_node.width = 300
+        # map UVMap.001 to group_node.inputs['UVMap1']
+        # map FacePaintReversed to group_node.inputs['FacePaintReversed']
+        if 'UVMap.001' in mesh.uv_layers:
+            # spawn UVMap node
+            uvMapNode = node_tree.nodes.new('ShaderNodeUVMap')
+            uvMapNode.uv_map = 'UVMap.001'   # type: ignore
+            uvMapNode.location = (-500, 300)
+            # link UVMap node to devalUv_node
+            linkInputSafe(node_tree, uvMapNode.outputs['UV'], decalUv_node, 'UVMap1')
+        decalMappings = [FloatMapping('FacePaintUVMultiplier', 'UVMultiplier'), FloatMapping('FacePaintUVOffset', 'UVOffset')]     
+        mapMappings(mat, mesh, decalUv_node, directory, decalMappings)   
+
+        decalTextureNode = None
+        for node in node_tree.nodes:
+            if node.type == 'TEX_IMAGE' and node.name == 'Decal_PngCachePath':
+                decalTextureNode = node
+                break
+            
+        if decalTextureNode is not None:
+            linkInputSafe(node_tree, decalUv_node.outputs['DecalUV'], decalTextureNode, 'Vector')
+                
+        
+    
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
     bsdf_node.location = (east + 600, 300)
     material_output.location = (east + 1000, 300)
+    if decalUv_node is not None:
+        decalUv_node.location = (east - 600, 300)
+    if uvMapNode is not None:
+        uvMapNode.location = (east - 900, 300)
     return {'FINISHED'}
     
 def handleHair(mat: bpy.types.Material, mesh, directory):
