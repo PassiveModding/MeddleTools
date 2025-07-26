@@ -12,6 +12,8 @@ repo_release_url = "https://api.github.com/repos/PassiveModding/MeddleTools/rele
 repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
 sponsor_url = "https://github.com/sponsors/PassiveModding"
 carrd_url = "https://meddle.carrd.co/"
+discord_url = "https://discord.gg/2jnZMNVM4p"
+kofi_url = "https://ko-fi.com/ramen_au"
 current_version = "Unknown"
 latest_version = "Unknown"
 latest_version_blob = None
@@ -133,15 +135,6 @@ class MeddleCreditPanel(bpy.types.Panel):
         row.label(text="Special thanks to:")
         row = col.row()
         row.label(text="  - SkulblakaDrotningu for Lizzer Tools Meddle")
-        
-        layout.separator()
-
-        row = layout.row()
-        row.operator("wm.url_open", text="MeddleTools Github").url = repo_url
-        row.operator("wm.url_open", text="Report Issues").url = repo_issues_url
-        
-        row = layout.row()
-        row.operator("wm.url_open", text="Support Meddle").url = sponsor_url
     
 class MeddleHeaderPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleHeaderPanel"
@@ -157,7 +150,9 @@ class MeddleHeaderPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         
-        layout.operator("wm.url_open", text="Support & Links", icon="HEART").url = carrd_url
+        layout.operator("wm.url_open", text="Carrd", icon="HELP").url = carrd_url
+        layout.operator("wm.url_open", text="Discord", icon="COMMUNITY").url = discord_url
+        layout.operator("wm.url_open", text="Sponsor via Ko-Fi", icon="HEART").url = kofi_url
         
         row = layout.row()
         row.operator("wm.url_open", text="Github", icon="HELP").url = repo_url

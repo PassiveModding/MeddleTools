@@ -42,7 +42,7 @@ class ModelImportSettings(bpy.types.PropertyGroup):
             ('TEMPERANCE', 'Temperance', 'Temperance (A bone with one child has its tip placed on the axis closest to its child)'),
         ],
         name='Import Mode',
-        default='BLENDER',
+        default='TEMPERANCE',
     )
     
     displayImportHelp: bpy.props.BoolProperty(
