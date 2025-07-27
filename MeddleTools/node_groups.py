@@ -534,24 +534,31 @@ class BgMapping:
         # Vornoi Texture Color -> Vector Mapping Rotation
         # Vector Mapping Vector -> Texture Vector
         
+# // BG Stuff 0x36F72D5F -> Value -> Pixel Shader mappings; need to RE each one to determine under what conditions each is actually used.
+# // 1E314009 = 145 - vornoi
+# // 6936709F = 161
+# // 88A3965A = 127
+# // 9807BAC4 = 173 - vornoi
+        
         vectorMapping = None
-        if '0x36F72D5F' in properties and properties['0x36F72D5F'] == '0x9807BAC4':
-            uvMapNode = material.nodes.new('ShaderNodeUVMap')
-            uvMapNode.uv_map = 'UVMap'
-            uvMapNode.location = (-500, node_height)
-            
-            voronoiTexture = material.nodes.new('ShaderNodeTexVoronoi')
-            voronoiTexture.location = (-300, node_height)
-            
-            vectorMapping = material.nodes.new('ShaderNodeMapping')
-            vectorMapping.location = (0, node_height)
-            
-            # material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
-            # material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
-            # material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
-            linkInputSafe(material, uvMapNode.outputs['UV'], vectorMapping, 'Vector')
-            linkInputSafe(material, uvMapNode.outputs['UV'], voronoiTexture, 'Vector')
-            linkInputSafe(material, voronoiTexture.outputs['Color'], vectorMapping, 'Rotation')
+        # if '0x36F72D5F' in properties:
+        #     if properties['0x36F72D5F'] == '0x9807BAC4' or properties['0x36F72D5F'] == '0x1E314009':
+        #         uvMapNode = material.nodes.new('ShaderNodeUVMap')
+        #         uvMapNode.uv_map = 'UVMap'
+        #         uvMapNode.location = (-500, node_height)
+                
+        #         voronoiTexture = material.nodes.new('ShaderNodeTexVoronoi')
+        #         voronoiTexture.location = (-300, node_height)
+                
+        #         vectorMapping = material.nodes.new('ShaderNodeMapping')
+        #         vectorMapping.location = (0, node_height)
+                
+        #         # material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
+        #         # material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
+        #         # material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
+        #         linkInputSafe(material, uvMapNode.outputs['UV'], vectorMapping, 'Vector')
+        #         linkInputSafe(material, uvMapNode.outputs['UV'], voronoiTexture, 'Vector')
+        #         linkInputSafe(material, voronoiTexture.outputs['Color'], vectorMapping, 'Rotation')
         
         # connect 0 maps.
         # only connect vertex property mapping IF 1 maps exist
