@@ -1,7 +1,7 @@
 schema_version = "0.0.1"
 
 id = "meddle_tools"
-version = "0.0.30"
+version = "0.0.31"
 name = "Meddle Tools"
 tagline = "This is another extension"
 maintainer = "PassiveModding"
