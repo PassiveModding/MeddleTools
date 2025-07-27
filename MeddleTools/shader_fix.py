@@ -152,6 +152,9 @@ def setCollection(obj: bpy.types.Object, context: bpy.types.Context):
     if checkObj.name.startswith("SharedGroup_"):
         addToGroup(obj, "SharedGroups", context)        
         
+    if checkObj.name.startswith("Housing_"):
+        addToGroup(obj, "Housing", context)   
+        
     if checkObj.name.startswith("BgPart_"):
         addToGroup(obj, "BgParts", context)
         
