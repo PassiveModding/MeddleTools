@@ -302,6 +302,11 @@ def addVoronoiTexture(mat: bpy.types.Material):
     if mat is None or not mat.use_nodes:
         return {'CANCELLED'}
     
+    # if already has voronoi texture, do nothing
+    if any(node.type == 'TEX_VORONOI' for node in mat.node_tree.nodes):
+        print(f"Material {mat.name} already has a voronoi texture.")
+        return {'CANCELLED'}
+    
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     
