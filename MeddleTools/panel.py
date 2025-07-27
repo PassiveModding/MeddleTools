@@ -96,6 +96,9 @@ class MeddleShaderImportPanel(bpy.types.Panel):
         
         row = layout.row()
         row.operator(shader_fix.MeddleClear.bl_idname, text='Clear Applied Status')
+        
+        row = layout.row()
+        row.operator(shader_fix.AddVoronoiTexture.bl_idname, text='Apply Voronoi to selected terrains')
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
@@ -177,6 +180,7 @@ classes = [
     shader_fix.ShaderFixSelected,
     shader_fix.LightingBoost,
     shader_fix.MeddleClear,
+    shader_fix.AddVoronoiTexture,
     gltf_import.ModelImport,
     MeddleImportPanel,
     MeddleShaderImportPanel,
