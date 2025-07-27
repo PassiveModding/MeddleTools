@@ -275,16 +275,26 @@ class AddVoronoiTexture(bpy.types.Operator):
     bl_description = "Add voronoi texture setup for background objects"
     
     def execute(self, context):
-        # for every material in the scene, add the voronoi texture setup
-        for mat in bpy.data.materials:
-            if mat is None or not mat.use_nodes:
+        # # for every material in the scene, add the voronoi texture setup
+        # for mat in bpy.data.materials:
+        #     if mat is None or not mat.use_nodes:
+        #         continue
+            
+        #     # check if the material is a background material
+        #     if "0x36F72D5F" in mat:
+        #         if mat["0x36F72D5F"] == "0x9807BAC4" or mat["0x36F72D5F"] == "0x1E314009" or mat["0x36F72D5F"] == "0x88A3965A":
+        #             # add the voronoi texture setup
+        #             addVoronoiTexture(mat)
+        
+        # apply vornoi to all selected objects
+        for obj in context.selected_objects:
+            if obj is None or obj.type != 'MESH':
                 continue
             
-            # check if the material is a background material
-            if "0x36F72D5F" in mat:
-                if mat["0x36F72D5F"] == "0x9807BAC4" or mat["0x36F72D5F"] == "0x1E314009" or mat["0x36F72D5F"] == "0x88A3965A":
-                    # add the voronoi texture setup
-                    addVoronoiTexture(mat)
+            # get the material slots
+            for slot in obj.material_slots:
+                if slot.material is not None:
+                    addVoronoiTexture(slot.material)
                     
         return {'FINISHED'}
     
