@@ -898,7 +898,7 @@ def handleHair(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
 
     try:
-        bsdf_node.inputs.get("Transmission Weight").default_value = 0.05
+        bsdf_node.inputs.get("Transmission Weight").default_value = 0.01
         bsdf_node.inputs.get("Subsurface Scale").default_value = 0.15
         node_tree.links.new(group_node.outputs.get("Base Color"), bsdf_node.inputs.get("Subsurface Radius"))
     except Exception as e:
