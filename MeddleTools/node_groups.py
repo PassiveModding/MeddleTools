@@ -641,13 +641,22 @@ def clearMaterialNodes(node_tree: bpy.types.ShaderNodeTree):
     for node in node_tree.nodes:
         node_tree.nodes.remove(node)
         
-def createBsdfNode(node_tree: bpy.types.ShaderNodeTree):
+def createBsdfNode(node_tree: bpy.types.ShaderNodeTree, subsurface_method:str = 'BURLEY'):
+    """Creates the principled BSDF node for the material
+
+    Args:
+        node_tree (bpy.types.ShaderNodeTree): A reference to the material's node tree
+        subsurface_method (str, optional): Which subsurface method to use from BURLEY, RANDOM_WALK and RANDOM_WALK_SKIN. Defaults to 'BURLEY'.
+
+    Returns:
+        bsdf_node (bpy.types.ShaderNodeBsdfPrincipled): A reference to the newly created principled BSDF node
+    """
     bsdf_node: bpy.types.ShaderNodeBsdfPrincipled = node_tree.nodes.new('ShaderNodeBsdfPrincipled')     # type: ignore
     bsdf_node.width = 300
     try:
-        bsdf_node.subsurface_method = 'BURLEY'
+        bsdf_node.subsurface_method = subsurface_method
     except:
-        print("Subsurface method not found")
+        print(f"Something went wrong when trying to set subsurface method: \"{subsurface_method}\"")
     return bsdf_node
 
 def mapBsdfOutput(mat: bpy.types.Material, material_output: bpy.types.ShaderNodeOutputMaterial, bsdf_node: bpy.types.ShaderNodeBsdfPrincipled, targetIdentifier: str):
@@ -800,7 +809,7 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
     group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
     group_node.width = 300
     
-    bsdf_node = createBsdfNode(node_tree)
+    bsdf_node = createBsdfNode(node_tree, 'RANDOM_WALK_SKIN') # Specify Skin subsurface method
     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')    
     mapGroupOutputs(mat, bsdf_node, group_node)
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
@@ -887,6 +896,14 @@ def handleHair(mat: bpy.types.Material, mesh, directory):
     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
     mapGroupOutputs(mat, bsdf_node, group_node)
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+
+    try:
+        bsdf_node.inputs.get("Transmission Weight").default_value = 0.01
+        bsdf_node.inputs.get("Subsurface Scale").default_value = 0.15
+        node_tree.links.new(group_node.outputs.get("Base Color"), bsdf_node.inputs.get("Subsurface Radius"))
+    except Exception as e:
+        print(f"Exception occured when setting some hair inputs: {e}")
+
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
     bsdf_node.location = (east + 600, 300)
