@@ -90,18 +90,19 @@ def updateCurrentRelease():
 
 def runInit():
     try:
-        updateLatestReleaseBlob()
-        if latest_version is not None:
-            print(f"Latest version: {latest_version}")
-    except Exception as e:
-        print(f"Failed to get latest version: {e}")
-        
-    try:
         updateCurrentRelease()
         if current_version is not None:
             print(f"Current version: {current_version}")
     except Exception as e:
         print(f"Failed to read current version: {e}")
+        
+    try:        
+        bpy.app.timers.register(updateLatestReleaseBlob, first_interval=2)
+        if latest_version is not None:
+            print(f"Latest version: {latest_version}")
+    except Exception as e:
+        print(f"Failed to get latest version: {e}")
+        
 
 #¤¤¤¤¤¤¤¤¤¤¤#
 # Operators #
