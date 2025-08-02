@@ -40,11 +40,6 @@ current_version = "Unknown"  # Holds the current version string
 # Functions #
 #¤¤¤¤¤¤¤¤¤¤¤#
 
-def get_github_download_url(user, repo, branch):
-    """Return the path to a github zip file"""
-    return f"https://github.com/{user}/{repo}/archive/refs/heads/{branch}.zip"
-
-
 def download_addon(url: str, name: str = "download") -> str:
     """Download the selected branch from GitHub and return the ZIP path."""
     temp_dir = tempfile.mkdtemp()
@@ -157,9 +152,11 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
         context.window.cursor_set('WAIT')
 
         try:
-            url = get_github_download_url(GITHUB_USER, GITHUB_REPO, GITHUB_BRANCH)
+            if latest_version_blob is None:
+                self.report({'ERROR'}, "Latest version information is not available.")
+                return {'CANCELLED'}
             self.report({'INFO'}, "Downloading update...")
-            zip = download_addon(url, GITHUB_REPO)
+            zip = download_addon(latest_version_url, GITHUB_REPO)
             
             if zip == None:
                 self.report({'ERROR'}, f"Failed to download {GITHUB_REPO}.")
