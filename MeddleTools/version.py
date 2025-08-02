@@ -8,7 +8,7 @@ import addon_utils
 from . import setup
 
 logging.basicConfig()
-logger = logging.getLogger('MeddleTools.auto_updating')
+logger = logging.getLogger('MeddleTools.version')
 logger.setLevel(logging.INFO)
 
 #¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤¤#
@@ -59,28 +59,36 @@ def download_addon(url: str, name: str = "download") -> str:
     return zip_path
 
 def updateLatestReleaseBlob():
-    response = requests.get(GITHUB_RELEASE_URL)
-    if response.status_code != 200:
-        raise Exception(f"Failed to get latest version: {response.status_code}")
-    data = response.json()
-    
-    global latest_version_blob
-    latest_version_blob = data
-    global latest_version
-    latest_version = data["tag_name"]
-    global latest_version_name
-    latest_version_name = data["name"]
-    global latest_version_dl_name
-    latest_version_dl_name = f"{GITHUB_REPO}-{latest_version}"
-    global latest_version_url
-    latest_version_url = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/download/{latest_version}/{latest_version_dl_name}.zip"
+    try:
+        response = requests.get(GITHUB_RELEASE_URL)
+        if response.status_code != 200:
+            raise Exception(f"Failed to get latest version: {response.status_code}")
+        data = response.json()
+        
+        global latest_version_blob
+        latest_version_blob = data
+        global latest_version
+        latest_version = data["tag_name"]
+        global latest_version_name
+        latest_version_name = data["name"]
+        global latest_version_dl_name
+        latest_version_dl_name = f"{GITHUB_REPO}-{latest_version}"
+        global latest_version_url
+        latest_version_url = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/download/{latest_version}/{latest_version_dl_name}.zip"
+        logger.info(f"Latest version: {latest_version} ({latest_version_name})")
+    except Exception as e:
+        logger.error(f"Failed to update latest release blob: {e}")
+        return False
 
 def updateCurrentRelease():
     global current_version
     current_version = "Unknown"
     
+    enabledAddons = [addon.module for addon in bpy.context.preferences.addons]
     for mod in addon_utils.modules():
-        if mod.bl_info.get("name") == "Meddle Tools":
+        if mod.__name__ in enabledAddons and mod.bl_info.get("name") == "Meddle Tools":
+            if current_version != "Unknown":
+                logger.warning("Multiple Meddle Tools addons found, version may not be accurate.")
             version = mod.bl_info.get("version", [])
             current_version = ".".join([str(v) for v in version])
     
@@ -92,17 +100,11 @@ def runInit():
     try:
         updateCurrentRelease()
         if current_version is not None:
-            print(f"Current version: {current_version}")
+            logger.info(f"Current version: {current_version}")
     except Exception as e:
-        print(f"Failed to read current version: {e}")
+        logger.error(f"Failed to update current release: {e}")
         
-    try:        
-        bpy.app.timers.register(updateLatestReleaseBlob, first_interval=2)
-        if latest_version is not None:
-            print(f"Latest version: {latest_version}")
-    except Exception as e:
-        print(f"Failed to get latest version: {e}")
-        
+    bpy.app.timers.register(updateLatestReleaseBlob, first_interval=2)
 
 #¤¤¤¤¤¤¤¤¤¤¤#
 # Operators #
