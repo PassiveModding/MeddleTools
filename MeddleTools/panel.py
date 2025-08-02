@@ -5,8 +5,6 @@ from . import gltf_import
 from . import version
 
 repo_url = "https://github.com/PassiveModding/MeddleTools"
-repo_release_download_url = "https://github.com/PassiveModding/MeddleTools/releases"
-repo_release_url = "https://api.github.com/repos/PassiveModding/MeddleTools/releases/latest"
 repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
 sponsor_url = "https://github.com/sponsors/PassiveModding"
 carrd_url = "https://meddle.carrd.co/"
@@ -46,14 +44,11 @@ class MeddleImportPanel(bpy.types.Panel):
         col.label(text="Import and automatically apply shaders")
         col.label(text="Navigate to your Meddle export folder")
         col.label(text="and select the .gltf or .glb file")
-        col.separator()
-        col.label(text="Make sure you exported in 'raw' mode")
-        col.label(text="from the Meddle ffxiv plugin")
             
 class ModelImportHelpHover(bpy.types.Operator):
     bl_idname = "meddle.model_import_help_hover"
     bl_label = "Import Help"
-    bl_description = "Import and automatically apply shaders. Navigate to your Meddle export folder and select the .gltf or .glb file. Make sure you exported in 'raw' mode from the Meddle ffxiv plugin."
+    bl_description = "Import and automatically apply shaders. Navigate to your Meddle export folder and select the .gltf or .glb file."
     
     def execute(self, context):
         # toggle the display of the import help
@@ -70,8 +65,20 @@ class MeddleShaderImportPanel(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
     
     def draw(self, context):
+        
         layout = self.layout
         
+        # note that this section is mostly for testing
+        row = layout.row()
+        section = layout.box()
+        col = section.column()
+        row = col.row()
+        row.label(text="This section is mostly for testing purposes")
+        row = col.row()
+        row.label(text="in most cases you can just use")
+        row = col.row()
+        row.label(text="the Import .gltf/.glb operator")
+
         row = layout.row()
         section = layout.box()
         col = section.column()
@@ -173,8 +180,12 @@ class MeddleHeaderPanel(bpy.types.Panel):
                 box = layout.box()
                 col = box.column()
                 row = col.row()
+                row.label(text=f"Current version: {version.current_version}")
+                row = col.row()
                 row.label(text=f"New version available: {version.latest_version}")
                 row = col.row()
-                row.operator("wm.url_open", text="Download").url = repo_release_download_url
+                row.operator("wm.url_open", text="Download").url = version.GITHUB_RELEASE_PAGE_URL
                 row = col.row()
                 row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
+                row = col.row()
+                row.label(text=f"{version.latest_version_name}")

@@ -5,6 +5,7 @@ import os
 import tempfile
 import logging
 import addon_utils
+from . import setup
 
 logging.basicConfig()
 logger = logging.getLogger('MeddleTools.auto_updating')
@@ -17,22 +18,19 @@ logger.setLevel(logging.INFO)
 
 GITHUB_USER = "PassiveModding"
 GITHUB_REPO = "MeddleTools"
-GITHUB_BRANCH = "main"
-GITHUB_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/"
 GITHUB_RELEASE_URL = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
+GITHUB_RELEASE_PAGE_URL = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
 
 # Local manifest path
 extension_directory = str(__package__).split(".")[1] # example of package: bl_ext.vscode_development.FFGear (This will almost always be "user_default")
 EXTENSIONS_PATH = bpy.utils.user_resource('EXTENSIONS', path=extension_directory)
 FFGEAR_FOLDER = os.path.join(EXTENSIONS_PATH, "FFGear")
 
-update_available = False  # Tracks if an update is available
-update_installed = False  # Tracks if an update was successfully installed
-
 latest_version_blob = None  # Holds the latest version blob from GitHub
 latest_version = "Unknown"  # Holds the latest version string
 latest_version_name = "Unknown"  # Holds the latest version name
 latest_version_url = "Unknown"  # Holds the latest version download URL
+latest_version_dl_name = "MeddleTools"  # Holds the latest version download name
 current_version = "Unknown"  # Holds the current version string
 
 
@@ -72,8 +70,10 @@ def updateLatestReleaseBlob():
     latest_version = data["tag_name"]
     global latest_version_name
     latest_version_name = data["name"]
+    global latest_version_dl_name
+    latest_version_dl_name = f"{GITHUB_REPO}-{latest_version}"
     global latest_version_url
-    latest_version_url = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/download/{latest_version}/MeddleTools-{latest_version}.zip"
+    latest_version_url = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/download/{latest_version}/{latest_version_dl_name}.zip"
 
 def updateCurrentRelease():
     global current_version
@@ -108,7 +108,7 @@ def runInit():
 #¤¤¤¤¤¤¤¤¤¤¤#
 
 class MeddleToolsInstallUpdate(bpy.types.Operator):
-    """Download and install the latest version of MeddleTools"""
+    f"""Download and install the latest version of MeddleTools"""
     bl_idname = "meddle.install_update"
     bl_label = "Install Update"
     bl_options = {'REGISTER', 'UNDO'}
@@ -118,6 +118,8 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
         description="If checked, Blender will attempt the update even if there are unsaved changes (they may be lost if the update crashes).",
         default=False,
     )
+    
+    
 
     # This method is called when the operator is run from the UI.
     def invoke(self, context, event):
@@ -145,8 +147,6 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
             logger.info("User confirmed to proceed with unsaved changes. Proceeding with update.")
         else:
             logger.info("No unsaved changes detected. Proceeding with update.")
-        
-        global update_available, update_installed
 
         # Spinny Cursor
         context.window.cursor_set('WAIT')
@@ -156,7 +156,7 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
                 self.report({'ERROR'}, "Latest version information is not available.")
                 return {'CANCELLED'}
             self.report({'INFO'}, "Downloading update...")
-            zip = download_addon(latest_version_url, GITHUB_REPO)
+            zip = download_addon(latest_version_url, latest_version_dl_name)
             
             if zip == None:
                 self.report({'ERROR'}, f"Failed to download {GITHUB_REPO}.")
@@ -164,10 +164,7 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
 
             try:
                 self.report({'INFO'}, "Installing update...")
-                bpy.ops.extensions.package_install_files(directory=EXTENSIONS_PATH, filepath=zip, repo=extension_directory, url=url)
-                # self.report({'INFO'}, f"Installed {GITHUB_REPO}.")
-                update_installed = True
-                update_available = False
+                bpy.ops.extensions.package_install_files(directory=EXTENSIONS_PATH, filepath=zip, repo=extension_directory, url=latest_version_url)
             except Exception as e:
                 error_message = f"Failed to install {GITHUB_REPO}. Error: {str(e)}"
                 self.report({'ERROR'}, error_message)
