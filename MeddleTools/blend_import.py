@@ -1,6 +1,5 @@
 import bpy
 from os import path
-from . import node_groups
     
 class ImportShaders(bpy.types.Operator):
 

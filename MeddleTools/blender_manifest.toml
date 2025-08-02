@@ -3,7 +3,7 @@ schema_version = "0.0.1"
 id = "meddle_tools"
 version = "0.0.31"
 name = "Meddle Tools"
-tagline = "This is another extension"
+tagline = "Automatically setup FFXIV Meddle shaders and objects in Blender"
 maintainer = "PassiveModding"
 type = "add-on"
 website = "https://github.com/PassiveModding/MeddleTools"
@@ -18,3 +18,4 @@ license = [
 
 [permissions]
 files = "Import files from meddle cache directory"
+network = "Checking for and downloading updates, can disable" 

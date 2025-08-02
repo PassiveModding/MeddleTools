@@ -1,10 +1,8 @@
-import glob
 import bpy
 from . import blend_import
 from . import shader_fix
 from . import gltf_import
-import requests
-import addon_utils
+from . import version
 
 repo_url = "https://github.com/PassiveModding/MeddleTools"
 repo_release_download_url = "https://github.com/PassiveModding/MeddleTools/releases"
@@ -14,16 +12,7 @@ sponsor_url = "https://github.com/sponsors/PassiveModding"
 carrd_url = "https://meddle.carrd.co/"
 discord_url = "https://discord.gg/2jnZMNVM4p"
 kofi_url = "https://ko-fi.com/ramen_au"
-current_version = "Unknown"
-latest_version = "Unknown"
-latest_version_blob = None
-  
-def getLatestVersion():
-    response = requests.get(repo_release_url)
-    if response.status_code != 200:
-        raise Exception(f"Failed to get latest version: {response.status_code}")
-    data = response.json()
-    return data
+
 
 class MeddleImportPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddlePanel"
@@ -46,11 +35,30 @@ class MeddleImportPanel(bpy.types.Panel):
         layout.prop(context.scene.model_import_settings, 'deduplicateMaterials', text='Deduplicate Materials') 
         row = layout.row()
         row.operator(gltf_import.ModelImport.bl_idname, text='Import .gltf/.glb', icon='IMPORT')
-        row.operator(gltf_import.ModelImportHelpHover.bl_idname, text='', icon='QUESTION')
+        row.operator(ModelImportHelpHover.bl_idname, text='', icon='QUESTION')
         
         if context.scene.model_import_settings.displayImportHelp:
-            gltf_import.drawModelImportHelp(layout)       
-        
+            self.drawModelImportHelp(layout)
+
+    def drawModelImportHelp(self, layout):
+        box = layout.box()
+        col = box.column()
+        col.label(text="Import and automatically apply shaders")
+        col.label(text="Navigate to your Meddle export folder")
+        col.label(text="and select the .gltf or .glb file")
+        col.separator()
+        col.label(text="Make sure you exported in 'raw' mode")
+        col.label(text="from the Meddle ffxiv plugin")
+            
+class ModelImportHelpHover(bpy.types.Operator):
+    bl_idname = "meddle.model_import_help_hover"
+    bl_label = "Import Help"
+    bl_description = "Import and automatically apply shaders. Navigate to your Meddle export folder and select the .gltf or .glb file. Make sure you exported in 'raw' mode from the Meddle ffxiv plugin."
+    
+    def execute(self, context):
+        # toggle the display of the import help
+        context.scene.model_import_settings.displayImportHelp = not context.scene.model_import_settings.displayImportHelp
+        return {'FINISHED'}    
 
 class MeddleShaderImportPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleShaderImportPanel"
@@ -114,13 +122,12 @@ class MeddleCreditPanel(bpy.types.Panel):
         section = layout.box()
         col = section.column()
         row = col.row()
-        row.label(text=f"Version: {current_version}")
+        row.label(text=f"Version: {version.current_version}")
         row = col.row()
-        row.label(text=f"Latest Release ({latest_version})")
+        row.label(text=f"Latest Release ({version.latest_version})")
         row = col.row()
-        if latest_version_blob is not None:
-            latest_version_name = latest_version_blob["name"]
-            row.label(text=f"{latest_version_name}")
+        if version.latest_version_name is not None:
+            row.label(text=f"{version.latest_version_name}")
         else:
             row.label(text="Unknown")
         
@@ -148,8 +155,8 @@ class MeddleHeaderPanel(bpy.types.Panel):
     bl_category = "Meddle Tools" 
     
     def draw_header(self, context):
-        self.layout.label(text=f"Meddle Tools {current_version}", icon='INFO')
-        
+        self.layout.label(text=f"Meddle Tools {version.current_version}", icon='INFO')
+
     def draw(self, context):
         layout = self.layout
         
@@ -161,67 +168,13 @@ class MeddleHeaderPanel(bpy.types.Panel):
         row.operator("wm.url_open", text="Github", icon="HELP").url = repo_url
         row.operator("wm.url_open", text="Issues", icon="BOOKMARKS").url = repo_issues_url
         
-        if latest_version != "Unknown" and current_version != "Unknown":
-            if latest_version != current_version:
+        if version.latest_version != "Unknown" and version.current_version != "Unknown":
+            if True or version.latest_version != version.current_version:
                 box = layout.box()
                 col = box.column()
                 row = col.row()
-                row.label(text=f"New version available: {latest_version}")
+                row.label(text=f"New version available: {version.latest_version}")
                 row = col.row()
                 row.operator("wm.url_open", text="Download").url = repo_release_download_url
-        
-    
-classes = [
-    MeddleHeaderPanel,
-    blend_import.ImportShaders,
-    blend_import.ReplaceShaders,
-    blend_import.ShaderHelper,
-    shader_fix.ShaderFixActive,
-    shader_fix.ShaderFixSelected,
-    shader_fix.LightingBoost,
-    shader_fix.MeddleClear,
-    shader_fix.AddVoronoiTexture,
-    gltf_import.ModelImport,
-    MeddleImportPanel,
-    MeddleShaderImportPanel,
-    MeddleCreditPanel
-]
-
-def register():
-    try:
-        latest_version_info = getLatestVersion()
-        global latest_version
-        latest_version = latest_version_info["tag_name"]
-        global latest_version_blob
-        latest_version_blob = latest_version_info
-        print(f"Latest version: {latest_version}")
-    except Exception as e:
-        print(f"Failed to get latest version: {e}")
-        
-    try:
-        global current_version      
-        version_set = False 
-        for mod in addon_utils.modules():
-            if mod.bl_info.get("name") == "Meddle Tools":
-                print(f"Found MeddleTools: {mod.bl_info.get('version')}")
-                current_version = ".".join([str(v) for v in mod.bl_info.get("version")])
-                version_set = True
-        if not version_set:
-            current_version = "Unknown"
-        print(f"Current version: {current_version}")
-    except Exception as e:
-        print(f"Failed to read current version: {e}")
-    
-    for cls in classes:
-        bpy.utils.register_class(cls)
-        
-    gltf_import.registerModelImportSettings()
-        
-
-def unregister():
-    for cls in classes:
-        bpy.utils.unregister_class(cls)
-    
-    gltf_import.unregisterModelImportSettings()
-        
-        
+                row = col.row()
+                row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
