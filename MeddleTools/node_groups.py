@@ -1,3 +1,4 @@
+from tracemalloc import start
 import bpy
 from os import path
    
@@ -519,7 +520,40 @@ class UVMapping:
         
         return node_height - 300
         
-            
+def mapTextureIfExists(material, properties, directory, groupNode, texture_name, dest_name, alpha_dest_name, colorSpace): # returns node height if exists, otherwise none
+    if texture_name not in properties:
+        return None
+    
+    pathStr = bpy.path.native_pathsep(properties[texture_name])
+
+    if properties[texture_name] is None:
+        return None
+    
+    # if path contains dummy_ string, skip
+    if 'dummy_' in properties[texture_name]:
+        return None
+    
+    # if image loaded already, use that
+    img = None
+    for image in bpy.data.images:
+        if image.filepath == path.join(directory, pathStr):
+            img = image
+            break
+    else:
+        img = bpy.data.images.load(path.join(directory, pathStr))
+        
+    texture = material.nodes.new('ShaderNodeTexImage')
+    texture.image = img
+    texture.image.colorspace_settings.name = colorSpace
+    
+    if alpha_dest_name is not None:
+        linkInputSafe(material, texture.outputs['Alpha'], groupNode, alpha_dest_name)
+        
+    if dest_name is not None:
+        linkInputSafe(material, texture.outputs['Color'], groupNode, dest_name)
+        
+    return texture    
+        
 class BgMapping:
     def __init__(self):
         pass
@@ -528,114 +562,225 @@ class BgMapping:
         return f"BgMapping"
     
     def apply(self, material, mesh, groupNode, properties, directory, node_height):
-        
-        # UVMAP -> Vector Mapping Vector
-        # UVMAP -> Vornoi Texture Vector
-        # Vornoi Texture Color -> Vector Mapping Rotation
-        # Vector Mapping Vector -> Texture Vector
-        
-# // BG Stuff 0x36F72D5F -> Value -> Pixel Shader mappings; need to RE each one to determine under what conditions each is actually used.
-# // 1E314009 = 145 - vornoi
-# // 6936709F = 161
-# // 88A3965A = 127
-# // 9807BAC4 = 173 - vornoi
-        
-        vectorMapping = None
-        # if '0x36F72D5F' in properties:
-        #     if properties['0x36F72D5F'] == '0x9807BAC4' or properties['0x36F72D5F'] == '0x1E314009':
-        #         uvMapNode = material.nodes.new('ShaderNodeUVMap')
-        #         uvMapNode.uv_map = 'UVMap'
-        #         uvMapNode.location = (-500, node_height)
-                
-        #         voronoiTexture = material.nodes.new('ShaderNodeTexVoronoi')
-        #         voronoiTexture.location = (-300, node_height)
-                
-        #         vectorMapping = material.nodes.new('ShaderNodeMapping')
-        #         vectorMapping.location = (0, node_height)
-                
-        #         # material.links.new(uvMapNode.outputs['UV'], vectorMapping.inputs['Vector'])
-        #         # material.links.new(uvMapNode.outputs['UV'], voronoiTexture.inputs['Vector'])
-        #         # material.links.new(voronoiTexture.outputs['Color'], vectorMapping.inputs['Rotation'])        
-        #         linkInputSafe(material, uvMapNode.outputs['UV'], vectorMapping, 'Vector')
-        #         linkInputSafe(material, uvMapNode.outputs['UV'], voronoiTexture, 'Vector')
-        #         linkInputSafe(material, voronoiTexture.outputs['Color'], vectorMapping, 'Rotation')
-        
-        # connect 0 maps.
-        # only connect vertex property mapping IF 1 maps exist
-        def mapTextureIfExists(texture_name, dest_name, alpha_dest_name, colorSpace): # returns node height if exists, otherwise none
-            if texture_name not in properties:
-                return None
+        # should_connect_vertex = False
+        # new_height = mapTextureIfExists('g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
+        # if new_height is not None:
+        #     node_height = new_height
             
-            pathStr = bpy.path.native_pathsep(properties[texture_name])
+        # new_height = mapTextureIfExists('g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', None, 'Non-Color')
+        # if new_height is not None:
+        #     node_height = new_height
+            
+        # new_height = mapTextureIfExists('g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', None, 'Non-Color')
+        # if new_height is not None:
+        #     node_height = new_height
+            
+        # new_height = mapTextureIfExists('g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
+        # if new_height is not None:
+        #     node_height = new_height
+        #     should_connect_vertex = True
+            
+        # new_height = mapTextureIfExists('g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', None, 'Non-Color')
+        # if new_height is not None:
+        #     node_height = new_height
+        #     should_connect_vertex = True
+            
+        # new_height = mapTextureIfExists('g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', None, 'Non-Color')
+        # if new_height is not None:
+        #     node_height = new_height
+        #     should_connect_vertex = True
+            
+        # if should_connect_vertex:
+        #     vertexProperty = VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0))
+        #     new_height = vertexProperty.apply(material, mesh, groupNode, node_height)
+        #     if new_height is not None:
+        #         node_height = new_height
+        
+        color0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
+        normal0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color')
+        specular0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', 'g_SamplerSpecularMap0_alpha', 'Non-Color')
+        color1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
+        normal1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', 'g_SamplerNormalMap1_alpha', 'Non-Color')
+        specular1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', 'g_SamplerSpecularMap1_alpha', 'Non-Color')
+        
+        uv0 = None
+        uv1 = None
+        if 'UVMap' in mesh.uv_layers:
+            uv0 = material.nodes.new('ShaderNodeUVMap')
+            uv0.uv_map = 'UVMap'
+            if color0 is not None:
+                material.links.new(uv0.outputs['UV'], color0.inputs['Vector'])
+            if normal0 is not None:
+                material.links.new(uv0.outputs['UV'], normal0.inputs['Vector'])
+            if specular0 is not None:
+                material.links.new(uv0.outputs['UV'], specular0.inputs['Vector'])
+        if 'UVMap.001' in mesh.uv_layers:
+            uv1 = material.nodes.new('ShaderNodeUVMap')
+            uv1.uv_map = 'UVMap.001'
+            if color1 is not None:
+                material.links.new(uv1.outputs['UV'], color1.inputs['Vector'])
+            if normal1 is not None:
+                material.links.new(uv1.outputs['UV'], normal1.inputs['Vector'])
+            if specular1 is not None:
+                material.links.new(uv1.outputs['UV'], specular1.inputs['Vector'])
+                
+        # set node locations
+        start_height = node_height
+        if color0 is not None:
+            color0.location = (-500, node_height)
+            node_height -= 300
+        if normal0 is not None:
+            normal0.location = (-500, node_height)
+            node_height -= 300
+        if specular0 is not None:
+            specular0.location = (-500, node_height)
+            node_height -= 300
+        if color1 is not None:
+            color1.location = (-500, node_height)
+            node_height -= 300
+        if normal1 is not None:
+            normal1.location = (-500, node_height)
+            node_height -= 300
+        if specular1 is not None:
+            specular1.location = (-500, node_height)
+            node_height -= 300
+            
+        node_height = start_height
+        if uv0 is not None:
+            uv0.location = (-800, node_height)
+            node_height -= 300
+        if uv1 is not None:
+            uv1.location = (-800, node_height)
+            node_height -= 300
+            
+        return node_height
 
-            if properties[texture_name] is None:
-                return None
-            
-            # if path contains dummy_ string, skip
-            if 'dummy_' in properties[texture_name]:
-                return None
-            
-            # if image loaded already, use that
-            img = None
-            for image in bpy.data.images:
-                if image.filepath == path.join(directory, pathStr):
-                    img = image
-                    break
-            else:
-                img = bpy.data.images.load(path.join(directory, pathStr))
+class BgUvScrollMapping:
+    def __init__(self):
+        pass
+    
+    def __repr__(self):
+        return f"BgUvScrollMapping"
+    
+    def apply(self, material, mesh, groupNode, properties, directory, node_height):
+        color0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
+        normal0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color')
+        specular0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', 'g_SamplerSpecularMap0_alpha', 'Non-Color')
+        color1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
+        normal1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', 'g_SamplerNormalMap1_alpha', 'Non-Color')
+        specular1 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', 'g_SamplerSpecularMap1_alpha', 'Non-Color')
+
+        uv0 = None
+        uv1 = None
+        if 'UVMap' in mesh.uv_layers:
+            uv0 = material.nodes.new('ShaderNodeUVMap')
+            uv0.uv_map = 'UVMap'
+            if color0 is not None:
+                material.links.new(uv0.outputs['UV'], color0.inputs['Vector'])
+            if normal0 is not None:
+                material.links.new(uv0.outputs['UV'], normal0.inputs['Vector'])
+            if specular0 is not None:
+                material.links.new(uv0.outputs['UV'], specular0.inputs['Vector'])
+        if 'UVMap.001' in mesh.uv_layers:
+            uv1 = material.nodes.new('ShaderNodeUVMap')
+            uv1.uv_map = 'UVMap.001'
+            if color1 is not None:
+                material.links.new(uv1.outputs['UV'], color1.inputs['Vector'])
+            if normal1 is not None:
+                material.links.new(uv1.outputs['UV'], normal1.inputs['Vector'])
+            if specular1 is not None:
+                material.links.new(uv1.outputs['UV'], specular1.inputs['Vector'])    
                 
-            texture = material.nodes.new('ShaderNodeTexImage')
-            texture.image = img
-            texture.location = (-500, node_height)
-            texture.image.colorspace_settings.name = colorSpace
-            
-            if alpha_dest_name is not None:
-                material.links.new(texture.outputs['Alpha'], groupNode.inputs[alpha_dest_name])
-                
-            if dest_name is not None:
-                material.links.new(texture.outputs['Color'], groupNode.inputs[dest_name])
-            
-            if vectorMapping is not None:
-                material.links.new(vectorMapping.outputs['Vector'], texture.inputs['Vector'])
-                
+        # spawn meddle scroll group node
+        groupNodeData = bpy.data.node_groups.get('meddle scroll')
+        if groupNodeData is None:
+            print("meddle scroll group not found")
             return node_height - 300
         
-        should_connect_vertex = False
-        new_height = mapTextureIfExists('g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
-        if new_height is not None:
-            node_height = new_height
-            
-        new_height = mapTextureIfExists('g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', None, 'Non-Color')
-        if new_height is not None:
-            node_height = new_height
-            
-        new_height = mapTextureIfExists('g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', None, 'Non-Color')
-        if new_height is not None:
-            node_height = new_height
-            
-        new_height = mapTextureIfExists('g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
-        if new_height is not None:
-            node_height = new_height
-            should_connect_vertex = True
-            
-        new_height = mapTextureIfExists('g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', None, 'Non-Color')
-        if new_height is not None:
-            node_height = new_height
-            should_connect_vertex = True
-            
-        new_height = mapTextureIfExists('g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', None, 'Non-Color')
-        if new_height is not None:
-            node_height = new_height
-            should_connect_vertex = True
-            
-        if should_connect_vertex:
-            vertexProperty = VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0))
-            new_height = vertexProperty.apply(material, mesh, groupNode, node_height)
-            if new_height is not None:
-                node_height = new_height
-                
-        return node_height - 300
+        scrollAmount = None
+        if '0x9A696A17' in properties:
+            scrollAmount = properties['0x9A696A17']
         
+        scroll0 = None
+        if uv0 is not None:
+            scroll0 = material.nodes.new('ShaderNodeGroup')
+            scroll0.node_tree = groupNodeData
+            # map uv0 to UVMap input
+            linkInputSafe(material, uv0.outputs['UV'], scroll0, 'UVMap')
+            # set Multiplier on scroll0
+            if scrollAmount is not None:
+                # scroll0.inputs['Multiplier'].default_value = scrollAmount
+                setInputSafe(scroll0, 'Multiplier', [scrollAmount[0] * -1, scrollAmount[1], 0.0])
+            if color0 is not None:
+                material.links.new(scroll0.outputs['Vector'], color0.inputs['Vector'])
+            if normal0 is not None:
+                material.links.new(scroll0.outputs['Vector'], normal0.inputs['Vector'])
+            if specular0 is not None:
+                material.links.new(scroll0.outputs['Vector'], specular0.inputs['Vector'])
+
+        scroll1 = None
+        if uv1 is not None:
+            scroll1 = material.nodes.new('ShaderNodeGroup')
+            scroll1.node_tree = groupNodeData
+            # map uv1 to UVMap.001 input
+            linkInputSafe(material, uv1.outputs['UV'], scroll1, 'UVMap')
+            if scrollAmount is not None:
+                # scroll0.inputs['Multiplier'].default_value = scrollAmount
+                setInputSafe(scroll1, 'Multiplier', [scrollAmount[2] * -1, scrollAmount[3], 0.0])
+            if color1 is not None:
+                material.links.new(scroll1.outputs['Vector'], color1.inputs['Vector'])
+            if normal1 is not None:
+                material.links.new(scroll1.outputs['Vector'], normal1.inputs['Vector'])
+            if specular1 is not None:
+                material.links.new(scroll1.outputs['Vector'], specular1.inputs['Vector'])
+        # set node locations
+        def setNodeLocation(node, x, y):
+            if node is not None:
+                node.location = (x, y) 
+                return True
+            return False
+                
+        start_height = node_height
+        if setNodeLocation(color0, -500, node_height):
+            node_height -= 300
+        # setNodeLocation(normal0, -500, node_height - 300)
+        # setNodeLocation(specular0, -500, node_height - 600)
+        # setNodeLocation(color1, -500, node_height - 900)
+        # setNodeLocation(normal1, -500, node_height - 1200)
+        # setNodeLocation(specular1, -500, node_height - 1500)
+        # setNodeLocation(uv0, -800, node_height)
+        # setNodeLocation(uv1, -800, node_height - 900)
+        # setNodeLocation(scroll0, -700, node_height)
+        # setNodeLocation(scroll1, -700, node_height - 900)
+        if setNodeLocation(normal0, -500, node_height):
+            node_height -= 300
+        if setNodeLocation(specular0, -500, node_height):
+            node_height -= 300
+        if setNodeLocation(color1, -500, node_height):
+            node_height -= 300
+        if setNodeLocation(normal1, -500, node_height):
+            node_height -= 300
+        if setNodeLocation(specular1, -500, node_height):
+            node_height -= 300
+        
+        node_height = start_height
+        if uv0 is not None:
+            uv0.location = (-900, node_height)
+            node_height -= 300
+        if uv1 is not None:
+            uv1.location = (-900, node_height)
+            node_height -= 300
+        node_height = start_height
+        if scroll0 is not None:
+            scroll0.location = (-700, node_height)
+            node_height -= 300
+        if scroll1 is not None:
+            scroll1.location = (-700, node_height)
+            node_height -= 300
+        
+        return node_height
+            
+
 
 def clearMaterialNodes(node_tree: bpy.types.ShaderNodeTree):
     for node in node_tree.nodes:
@@ -734,6 +879,8 @@ def mapMappings(mat: bpy.types.Material, mesh, targetNode: bpy.types.ShaderNode,
         elif isinstance(mapping, ColorSetMapping2):
             node_height = mapping.apply(node_tree, targetNode, mat, directory, node_height)
         elif isinstance(mapping, BgMapping):
+            node_height = mapping.apply(node_tree, mesh, targetNode, mat, directory, node_height)
+        elif isinstance(mapping, BgUvScrollMapping):
             node_height = mapping.apply(node_tree, mesh, targetNode, mat, directory, node_height)
         elif isinstance(mapping, FloatMapping):
             mapping.apply(targetNode, mat)
@@ -1299,6 +1446,43 @@ def handleBg(mat: bpy.types.Material, mesh, directory):
     material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
     
     group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+    group_node.width = 300
+
+    bsdf_node = createBsdfNode(node_tree)
+    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+    mapGroupOutputs(mat, bsdf_node, group_node)
+    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+    east = getEastModePosition(node_tree)
+    group_node.location = (east + 200, 300)
+    bsdf_node.location = (east + 600, 300)
+    material_output.location = (east + 1000, 300)
+    return {'FINISHED'}
+
+def handleBgUvScroll(mat: bpy.types.Material, mesh, directory):
+    group_name = "meddle bg.shpk"
+    base_mappings = [
+        BgUvScrollMapping(),
+        FloatRgbMapping('g_DiffuseColor', 'g_DiffuseColor'),
+        FloatHdrMapping('g_EmissiveColor', 'g_EmissiveColor', 'g_EmissiveColor_magnitude'),
+    ]
+    
+    node_tree = mat.node_tree
+    if node_tree is None:
+        print(f"Material {mat.name} has no node tree")
+        return {'CANCELLED'}
+    
+    if group_name not in bpy.data.node_groups:
+        print(f"Node group {group_name} not found")
+        return {'CANCELLED'}
+    
+    mappings = []
+    
+    clearMaterialNodes(node_tree)
+    
+    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+    
+    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
     
     group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
     group_node.width = 300
@@ -1308,7 +1492,7 @@ def handleBg(mat: bpy.types.Material, mesh, directory):
     mapGroupOutputs(mat, bsdf_node, group_node)
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
-    group_node.location = (east + 300, 300)
+    group_node.location = (east + 200, 300)
     bsdf_node.location = (east + 600, 300)
     material_output.location = (east + 1000, 300)
     return {'FINISHED'}
@@ -1674,8 +1858,13 @@ def handleShader(mat: bpy.types.Material, mesh, object, deduplicate: bool, direc
                             return {'FINISHED'}
                 
     
-    if shader_package == 'bg.shpk' or shader_package == 'bguvscroll.shpk' or shader_package == 'bgcrestchange.shpk':
+    if shader_package == 'bg.shpk' or shader_package == 'bgcrestchange.shpk':
         handleBg(mat, mesh, directory)
+        mat['MeddleApplied'] = True
+        return {'FINISHED'}
+    
+    if shader_package == 'bguvscroll.shpk':
+        handleBgUvScroll(mat, mesh, directory)
         mat['MeddleApplied'] = True
         return {'FINISHED'}
     
