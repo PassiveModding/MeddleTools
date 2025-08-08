@@ -176,7 +176,7 @@ class MeddleHeaderPanel(bpy.types.Panel):
         row.operator("wm.url_open", text="Issues", icon="BOOKMARKS").url = repo_issues_url
         
         if version.latest_version != "Unknown" and version.current_version != "Unknown":
-            if True or version.latest_version != version.current_version:
+            if version.latest_version != version.current_version:
                 box = layout.box()
                 col = box.column()
                 row = col.row()
