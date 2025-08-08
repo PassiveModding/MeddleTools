@@ -1,10 +1,11 @@
-from . import panel
+from . import setup
 
 def register():
-    panel.register()
+    setup.register()
+        
 
 def unregister():
-    panel.unregister()
+    setup.unregister()
 
 if __name__ == "__main__":
     register()
