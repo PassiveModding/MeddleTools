@@ -709,15 +709,6 @@ class BgUvScrollMapping:
         start_height = node_height
         if setNodeLocation(color0, -500, node_height):
             node_height -= 300
-        # setNodeLocation(normal0, -500, node_height - 300)
-        # setNodeLocation(specular0, -500, node_height - 600)
-        # setNodeLocation(color1, -500, node_height - 900)
-        # setNodeLocation(normal1, -500, node_height - 1200)
-        # setNodeLocation(specular1, -500, node_height - 1500)
-        # setNodeLocation(uv0, -800, node_height)
-        # setNodeLocation(uv1, -800, node_height - 900)
-        # setNodeLocation(scroll0, -700, node_height)
-        # setNodeLocation(scroll1, -700, node_height - 900)
         if setNodeLocation(normal0, -500, node_height):
             node_height -= 300
         if setNodeLocation(specular0, -500, node_height):
