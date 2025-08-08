@@ -562,40 +562,6 @@ class BgMapping:
         return f"BgMapping"
     
     def apply(self, material, mesh, groupNode, properties, directory, node_height):
-        # should_connect_vertex = False
-        # new_height = mapTextureIfExists('g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
-        # if new_height is not None:
-        #     node_height = new_height
-            
-        # new_height = mapTextureIfExists('g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', None, 'Non-Color')
-        # if new_height is not None:
-        #     node_height = new_height
-            
-        # new_height = mapTextureIfExists('g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', None, 'Non-Color')
-        # if new_height is not None:
-        #     node_height = new_height
-            
-        # new_height = mapTextureIfExists('g_SamplerColorMap1_PngCachePath', 'g_SamplerColorMap1', 'g_SamplerColorMap1_alpha', 'sRGB')
-        # if new_height is not None:
-        #     node_height = new_height
-        #     should_connect_vertex = True
-            
-        # new_height = mapTextureIfExists('g_SamplerNormalMap1_PngCachePath', 'g_SamplerNormalMap1', None, 'Non-Color')
-        # if new_height is not None:
-        #     node_height = new_height
-        #     should_connect_vertex = True
-            
-        # new_height = mapTextureIfExists('g_SamplerSpecularMap1_PngCachePath', 'g_SamplerSpecularMap1', None, 'Non-Color')
-        # if new_height is not None:
-        #     node_height = new_height
-        #     should_connect_vertex = True
-            
-        # if should_connect_vertex:
-        #     vertexProperty = VertexPropertyMapping('Color', None, 'vertex_alpha', (0.5, 0.5, 0.5, 0))
-        #     new_height = vertexProperty.apply(material, mesh, groupNode, node_height)
-        #     if new_height is not None:
-        #         node_height = new_height
-        
         color0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerColorMap0_PngCachePath', 'g_SamplerColorMap0', 'g_SamplerColorMap0_alpha', 'sRGB')
         normal0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerNormalMap0_PngCachePath', 'g_SamplerNormalMap0', 'g_SamplerNormalMap0_alpha', 'Non-Color')
         specular0 = mapTextureIfExists(material, properties, directory, groupNode, 'g_SamplerSpecularMap0_PngCachePath', 'g_SamplerSpecularMap0', 'g_SamplerSpecularMap0_alpha', 'Non-Color')
