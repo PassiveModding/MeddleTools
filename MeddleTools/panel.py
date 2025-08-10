@@ -3,6 +3,7 @@ from . import blend_import
 from . import shader_fix
 from . import gltf_import
 from . import version
+from . import utils
 
 repo_url = "https://github.com/PassiveModding/MeddleTools"
 repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
@@ -111,9 +112,70 @@ class MeddleShaderImportPanel(bpy.types.Panel):
         
         row = layout.row()
         row.operator(shader_fix.MeddleClear.bl_idname, text='Clear Applied Status')
+
+class MeddleUtilsPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_MeddleUtilsPanel"
+    bl_label = "Meddle Utilities"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Meddle Tools"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.meddle_utils_props
         
-        row = layout.row()
-        row.operator(shader_fix.AddVoronoiTexture.bl_idname, text='Apply Voronoi to selected terrains')
+        # Find Properties section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Find Properties", icon='VIEWZOOM')
+        row = col.row()
+        row.prop(props, 'search_property', text='Property')
+        row = col.row()
+        row.operator(utils.FindProperties.bl_idname, text='Search Materials')
+        
+        # Light Boost section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Light Boost", icon='LIGHT')
+        row = col.row()
+        row.prop(props, 'light_boost_factor', text='Boost Factor')
+        row = col.row()
+        row.operator(utils.BoostLights.bl_idname, text='Boost All Lights')
+        
+        # Mesh Operations section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Mesh Operations", icon='MESH_DATA')
+        row = col.row()
+        row.operator(utils.JoinByMaterial.bl_idname, text='Join by Material')
+        row = col.row()
+        row.prop(props, 'merge_distance', text='Merge Distance')
+        row = col.row()
+        row.operator(utils.JoinByDistance.bl_idname, text='Join by Distance')
+        
+        # Material Operations section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Material Operations", icon='MATERIAL')
+        row = col.row()
+        row.operator(utils.AddVoronoiTexture.bl_idname, text='Apply Voronoi to Selected')
+        
+        # Animation & Rigging section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Animation & Rigging", icon='ARMATURE_DATA')
+        row = col.row()
+        row.operator(utils.CleanBoneHierarchy.bl_idname, text='Clean Bone Hierarchy')
+        row = col.row()
+        row.operator(utils.ImportAnimationGLTF.bl_idname, text='Import Animation GLTF', icon='IMPORT')
+        
+        # Scene Cleanup section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Scene Cleanup", icon='TRASH')
+        row = col.row()
+        row.operator(utils.PurgeUnused.bl_idname, text='Purge Unused Data')
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
