@@ -128,64 +128,109 @@ class BoostLights(Operator):
         return {'FINISHED'}
 
 class JoinByMaterial(Operator):
-    """Join meshes that share the same material"""
+    """Join meshes that share the same material as the active object's active material"""
     bl_idname = "meddle.join_by_material"
-    bl_label = "Join by Material"
-    bl_description = "Join mesh objects that share the same material"
+    bl_label = "Join by Selected Material"
+    bl_description = "Join mesh objects that use the same material as the active object's active material"
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        # This operation requires object mode
+        # Ensure we're in object mode
         if bpy.context.object and bpy.context.object.mode != 'OBJECT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        
-        # Get all mesh objects
+
+        active_obj = bpy.context.view_layer.objects.active
+        if not active_obj or active_obj.type != 'MESH':
+            self.report({'WARNING'}, "Select a mesh object with the material you want to join by")
+            return {'CANCELLED'}
+
+        # Determine the target material: prefer active material, fallback to first slot
+        target_mat = active_obj.active_material
+        if target_mat is None and active_obj.data.materials:
+            target_mat = active_obj.data.materials[0]
+
+        if target_mat is None:
+            self.report({'WARNING'}, "Active mesh has no material")
+            return {'CANCELLED'}
+
+        target_name = target_mat.name
+
+        # Collect all mesh objects in the scene that use this material in any slot
+        candidates = []
+        for obj in bpy.context.scene.objects:
+            if obj.type != 'MESH':
+                continue
+            try:
+                if any(ms.material and ms.material.name == target_name for ms in obj.material_slots):
+                    candidates.append(obj)
+            except Exception:
+                # Defensive: some objects may have problematic slots
+                pass
+
+        if len(candidates) < 2:
+            self.report({'INFO'}, f"Found {len(candidates)} object(s) using material '{target_name}' — nothing to join")
+            return {'CANCELLED'}
+
+        # Deselect all and select only the candidates
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in candidates:
+            obj.select_set(True)
+
+        # Make a stable active object (prefer the current active if it's in the set)
+        if active_obj in candidates:
+            bpy.context.view_layer.objects.active = active_obj
+        else:
+            bpy.context.view_layer.objects.active = candidates[0]
+
+        # Join them
+        bpy.ops.object.join()
+
+        self.report({'INFO'}, f"Joined {len(candidates)} objects using material '{target_name}'")
+        return {'FINISHED'}
+
+class JoinByMaterialAll(Operator):
+    """Join meshes across the scene, per first material group (original behavior)"""
+    bl_idname = "meddle.join_by_material_all"
+    bl_label = "Join by Material (All in Scene)"
+    bl_description = "Join all mesh objects in the scene grouped by their first material"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        # Ensure object mode
+        if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+
         mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
-        
         if not mesh_objects:
             self.report({'WARNING'}, "No mesh objects found in the scene")
             return {'CANCELLED'}
-        
-        # Group objects by their first material
+
+        # Group by first material name (or "No Material")
         material_groups = {}
-        
         for obj in mesh_objects:
             if obj.data.materials:
-                # Use the first material as the grouping key
                 material_name = obj.data.materials[0].name if obj.data.materials[0] else "No Material"
             else:
                 material_name = "No Material"
-            
-            if material_name not in material_groups:
-                material_groups[material_name] = []
-            material_groups[material_name].append(obj)
-        
+            material_groups.setdefault(material_name, []).append(obj)
+
         joined_groups = 0
-        
-        # Join objects in each material group
         for material_name, objects in material_groups.items():
-            if len(objects) > 1:  # Only join if there's more than one object
-                # Deselect all objects
-                bpy.ops.object.select_all(action='DESELECT')
-                
-                # Select objects in this group
-                for obj in objects:
-                    obj.select_set(True)
-                
-                # Set the first object as active
-                bpy.context.view_layer.objects.active = objects[0]
-                
-                # Join the objects
-                bpy.ops.object.join()
-                
-                joined_groups += 1
-                print(f"Joined {len(objects)} objects with material '{material_name}'")
-        
+            if len(objects) <= 1:
+                continue
+            bpy.ops.object.select_all(action='DESELECT')
+            for obj in objects:
+                obj.select_set(True)
+            bpy.context.view_layer.objects.active = objects[0]
+            bpy.ops.object.join()
+            joined_groups += 1
+            print(f"Joined {len(objects)} objects with material '{material_name}'")
+
         if joined_groups > 0:
             self.report({'INFO'}, f"Successfully joined {joined_groups} material groups")
         else:
             self.report({'INFO'}, "No objects to join (each material has only one object)")
-        
+
         return {'FINISHED'}
 
 class JoinByDistance(Operator):
@@ -732,6 +777,7 @@ utility_classes = [
     FindProperties,
     BoostLights,
     JoinByMaterial,
+    JoinByMaterialAll,
     JoinByDistance,
     PurgeUnused,
     AddVoronoiTexture,
