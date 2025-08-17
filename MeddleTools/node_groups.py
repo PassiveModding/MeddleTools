@@ -949,8 +949,8 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
     
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     if decalUv_node is not None:
         decalUv_node.location = (east - 600, 300)
     if uvMapNode is not None:
@@ -1010,8 +1010,8 @@ def handleHair(mat: bpy.types.Material, mesh, directory):
 
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleIris(mat: bpy.types.Material, mesh, directory):
@@ -1061,8 +1061,8 @@ def handleIris(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleCharacter(mat: bpy.types.Material, mesh, directory):
@@ -1340,11 +1340,10 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     east = getEastModePosition(node_tree)
     pair_node.location = (east + 300, 300)
     group_node.location = (east + 700, 300)
-    bsdf_node.location = (east + 1000, 300)
-    material_output.location = (east + 1300, 300)
+    bsdf_node.location = (east + 1100, 300)
+    material_output.location = (east + 1500, 300)
     
     return {'FINISHED'}
-    
     
 
 class FloatHdrMapping:
@@ -1488,8 +1487,8 @@ def handleCharacterTattoo(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
@@ -1524,8 +1523,8 @@ def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleBgProp(mat: bpy.types.Material, mesh, directory):
