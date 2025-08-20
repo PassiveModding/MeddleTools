@@ -28,7 +28,7 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False, extension: str = 'REPEAT'):
+    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False, extension: str = 'REPEAT', alpha_mode: str = 'CHANNEL_PACKED'):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
@@ -36,6 +36,7 @@ class PngMapping:
         self.interpolation = interpolation
         self.optional = optional
         self.extension = extension
+        self.alpha_mode = alpha_mode
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
@@ -81,9 +82,10 @@ class PngMapping:
         texture.label = self.property_name
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
+        texture.image.alpha_mode = self.alpha_mode
         texture.interpolation = self.interpolation
         texture.extension = self.extension
-        
+
         if self.alpha_dest is not None:
             #material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
             linkInputSafe(material, texture.outputs['Alpha'], groupNode, self.alpha_dest)
@@ -1274,7 +1276,6 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     sheenAptitudeRampB = setupRamp(-5700, node_tree, 'SheenAptitudeRampB')
     anisotropyRampA = setupRamp(-6000, node_tree, 'AnisotropyRampA')
     anisotropyRampB = setupRamp(-6300, node_tree, 'AnisotropyRampB')
-    
     mapRamp(colorRampA, colorRampB, rows, 'Diffuse', 'XYZ')
     mapRamp(specularRampA, specularRampB, rows, 'Specular', 'XYZ')
     mapRamp(emissionRampA, emissionRampB, rows, 'Emissive', 'XYZ')
