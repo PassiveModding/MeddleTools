@@ -1067,51 +1067,51 @@ def handleIris(mat: bpy.types.Material, mesh, directory):
     material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
-def handleCharacter(mat: bpy.types.Material, mesh, directory):
-    group_name = "meddle character.shpk"
-    base_mappings = [
-        ColorSetMapping2(),
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-    ]
+# def handleCharacter(mat: bpy.types.Material, mesh, directory):
+#     group_name = "meddle character.shpk"
+#     base_mappings = [
+#         ColorSetMapping2(),
+#         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+#     ]
     
-    node_tree = mat.node_tree
-    if node_tree is None:
-        print(f"Material {mat.name} has no node tree")
-        return {'CANCELLED'}
+#     node_tree = mat.node_tree
+#     if node_tree is None:
+#         print(f"Material {mat.name} has no node tree")
+#         return {'CANCELLED'}
     
-    if group_name not in bpy.data.node_groups:
-        print(f"Node group {group_name} not found")
-        return {'CANCELLED'}
+#     if group_name not in bpy.data.node_groups:
+#         print(f"Node group {group_name} not found")
+#         return {'CANCELLED'}
     
-    mappings = []
-    if 'GetValues' in mat:
-        if mat["GetValues"] == 'GetValuesCompatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+#     mappings = []
+#     if 'GetValues' in mat:
+#         if mat["GetValues"] == 'GetValuesCompatibility':
+#             mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
             
-    if 'GetValuesTextureType' in mat:
-        if mat["GetValuesTextureType"] == 'Compatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+#     if 'GetValuesTextureType' in mat:
+#         if mat["GetValuesTextureType"] == 'Compatibility':
+#             mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
             
-    clearMaterialNodes(node_tree)
+#     clearMaterialNodes(node_tree)
     
-    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+#     material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
     
-    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+#     group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
     
-    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
-    group_node.width = 300
+#     group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+#     group_node.width = 300
 
-    bsdf_node = createBsdfNode(node_tree)
-    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
-    mapGroupOutputs(mat, bsdf_node, group_node)
-    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
-    east = getEastModePosition(node_tree)
-    group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
-    return {'FINISHED'}
+#     bsdf_node = createBsdfNode(node_tree)
+#     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+#     mapGroupOutputs(mat, bsdf_node, group_node)
+#     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+#     east = getEastModePosition(node_tree)
+#     group_node.location = (east + 300, 300)
+#     bsdf_node.location = (east + 600, 300)
+#     material_output.location = (east + 1000, 300)
+#     return {'FINISHED'}
 
 def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_package: str):
     group_name = "meddle character.shpk"
