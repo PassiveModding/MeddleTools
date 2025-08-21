@@ -35,7 +35,7 @@ class ModelImport(bpy.types.Operator):
                 cache_dir = path.join(path.dirname(filepath), "cache")
                 bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')                
                 imported_meshes = [obp for obp in context.selected_objects if obp.type == 'MESH']
-                                  
+
                 for mesh in imported_meshes:
                     if mesh is None:
                         continue

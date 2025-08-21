@@ -81,10 +81,11 @@ class FloatMapping:
             print(f"Unsupported field type {group_input.type} for {self.field_name}")
             
 class MaterialKeyMapping:
-    def __init__(self, prop_name: str, prop_value: str, field_name: str):
+    def __init__(self, prop_name: str, prop_value: str, field_name: str, value_if_present: float = 1.0):
         self.prop_name = prop_name
         self.prop_value = prop_value
         self.field_name = field_name
+        self.value_if_present = value_if_present
 
     def apply(self, material_properties: dict, group_node):
         prop_value = material_properties.get(self.prop_name)
@@ -96,8 +97,8 @@ class MaterialKeyMapping:
         
         if self.field_name not in group_node.inputs:
             return
-        
-        group_node.inputs[self.field_name].default_value = 1.0        
+
+        group_node.inputs[self.field_name].default_value = self.value_if_present
 
 NodeGroupConfigs = {
     'meddle skin.shpk': 
@@ -117,6 +118,31 @@ NodeGroupConfigs = {
     [
         FloatMapping('FacePaintUVMultiplier', 'UVMultiplier'),
         FloatMapping('FacePaintUVOffset', 'UVOffset')
+    ],
+    'meddle hair2.shpk': 
+    [
+        ColorMapping('MainColor', 'Hair Color'),
+        ColorMapping('MeshColor', 'Highlights Color'),
+        MaterialKeyMapping('GetSubColor', 'GetSubColorFace', 'IS_FACE', 1.0),
+        MaterialKeyMapping('GetSubColor', 'GetSubColorHair', 'IS_FACE', 0.0),
+    ],
+    'meddle charactertattoo.shpk':
+    [        
+        ColorMapping('OptionColor', 'OptionColor'),
+    ],
+    'meddle iris2.shpk':
+    [        
+        ColorMapping('g_WhiteEyeColor', 'g_WhiteEyeColor'),
+        ColorMapping('LeftIrisColor', 'left_iris_color'),
+        ColorMapping('RightIrisColor', 'right_iris_color'),
+        FloatMapping('LeftIrisColor', 'left_iris_limbal_ring_intensity', 3),
+        FloatMapping('RightIrisColor', 'right_iris_limbal_ring_intensity', 3),
+        ColorMapping('g_IrisRingColor', 'g_IrisRingColor'),
+        FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
+        FloatMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_start', 0),
+        FloatMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_end', 1),
+        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
+        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),        
     ]
 }
   
@@ -139,6 +165,7 @@ def apply_material(slot: bpy.types.MaterialSlot):
         return False
     try:            
         source_material = slot.material
+
         shader_package = source_material.get("ShaderPackage")
         if not shader_package:
             print("Material does not have a shader package defined.")
@@ -152,15 +179,24 @@ def apply_material(slot: bpy.types.MaterialSlot):
             return False
 
         
-        template_copy = template_material.copy()
         new_name = source_material.name
         if not new_name.startswith('Meddle '):
             new_name = f'Meddle {version.current_version} {new_name}'
+        else:
+            print(f"Material {new_name} already has Meddle prefix, skipping.")
+            return False  # do not apply if already meddle material
         # give mat a version
+        template_copy = template_material.copy()
         template_copy.name = new_name
         apply_custom_properties(template_copy, copy_custom_properties(source_material))
 
         slot.material = template_copy
+        # make sure all other slots using source_material are updated
+        for obj in (o for o in bpy.data.objects if o.type == 'MESH'):
+            for slot in obj.material_slots:
+                if slot.material == source_material:
+                    slot.material = template_copy
+
         return True
     except Exception as e:
         print(e)
@@ -171,6 +207,7 @@ def map_mesh(mesh: bpy.types.Mesh, cache_directory: str):
     for slot in mesh.material_slots:
         if slot.material is None:
             continue
+       
        
         if not apply_material(slot):
             continue
