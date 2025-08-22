@@ -385,6 +385,10 @@ def copy_custom_properties(material: bpy.types.Material):
 def apply_custom_properties(material: bpy.types.Material, custom_props: dict):
     for key, value in custom_props.items():
         try:
+            # avoid 'Cannot assign a 'IDPropertyGroup' value to the existing '{key}' Group IDProperty
+            # just skip these without attempting to assign
+            if key in material:
+                continue
             material[key] = value
         except Exception as e:
             logger.warning("Could not apply custom property '%s' to '%s': %s", key, material.name, e)
@@ -440,7 +444,9 @@ def map_mesh(mesh: bpy.types.Mesh, cache_directory: str, force_apply: bool = Fal
         if not apply_material(slot, force_apply):
             continue
         
-        setPngConfig(slot.material, slot.material.get("ShaderPackage"), cache_directory)
+        logger.info("Applying material %s to mesh %s", slot.material.name, mesh.name)
+        setBackfaceCulling(mesh, slot.material)        
+        setPngConfig(slot.material, cache_directory)
         setUvMapConfig(mesh, slot.material)
         setGroupProperties(mesh, slot.material)
         setColorAttributes(mesh, slot.material)
@@ -545,7 +551,7 @@ def setColorTableRamps(mesh: bpy.types.Mesh, material: bpy.types.Material):
 
 def setColorAttributes(mesh: bpy.types.Mesh, material: bpy.types.Material):
     vertex_color_nodes = [node for node in material.node_tree.nodes if node.type == 'VERTEX_COLOR']
-    node_tree = material.node_tree
+    #node_tree = material.node_tree
     for node in vertex_color_nodes:
         # if has label, lookup color attribute and set
         label = node.label
@@ -559,7 +565,20 @@ def setColorAttributes(mesh: bpy.types.Mesh, material: bpy.types.Material):
             continue
         node.layer_name = label
 
-def setPngConfig(material: bpy.types.Material, shader_package: str, cache_directory: str):
+def setBackfaceCulling(mesh: bpy.types.Mesh, material: bpy.types.Material):
+    if not mesh.data:
+        return
+
+    if 'RenderBackfaces' not in material:
+        return
+    
+    render_backfaces = material['RenderBackfaces']
+    if render_backfaces:
+        material.use_backface_culling = False
+    else:
+        material.use_backface_culling = True
+
+def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
     texture_nodes = [node for node in node_tree.nodes if node.type == 'TEX_IMAGE']
 
