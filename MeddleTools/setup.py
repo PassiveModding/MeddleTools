@@ -1,4 +1,3 @@
-from email import utils
 import bpy
 from . import panel
 from . import blend_import

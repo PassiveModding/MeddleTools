@@ -232,43 +232,43 @@ TextureNodeConfigs = {
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_SamplerColorMap0': TextureNodeConfig(
+    'g_SamplerColorMap0_PngCachePath': TextureNodeConfig(
         colorSpace='sRGB',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_SamplerColorMap1': TextureNodeConfig(
+    'g_SamplerColorMap1_PngCachePath': TextureNodeConfig(
         colorSpace='sRGB',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_SamplerNormalMap0': TextureNodeConfig(
+    'g_SamplerNormalMap0_PngCachePath': TextureNodeConfig(
         colorSpace='Non-Color',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_SamplerNormalMap1': TextureNodeConfig(
+    'g_SamplerNormalMap1_PngCachePath': TextureNodeConfig(
         colorSpace='Non-Color',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_SamplerSpecularMap0': TextureNodeConfig(
+    'g_SamplerSpecularMap0_PngCachePath': TextureNodeConfig(
         colorSpace='Non-Color',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_Sampler0': TextureNodeConfig(
+    'g_Sampler0_PngCachePath': TextureNodeConfig(
         colorSpace='sRGB',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
     ),
-    'g_Sampler1': TextureNodeConfig(
+    'g_Sampler1_PngCachePath': TextureNodeConfig(
         colorSpace='sRGB',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
@@ -387,7 +387,7 @@ def apply_custom_properties(material: bpy.types.Material, custom_props: dict):
         try:
             material[key] = value
         except Exception as e:
-            logger.exception("Could not apply custom property '%s' to '%s': %s", key, material.name, e)
+            logger.warning("Could not apply custom property '%s' to '%s': %s", key, material.name, e)
 
 def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
     if slot.material is None:
