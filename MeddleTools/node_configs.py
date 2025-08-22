@@ -400,7 +400,7 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
             logger.debug("Material does not have a shader package defined.")
             return False
         
-        resource_name = f'meddle {shader_package}'
+        resource_name = f'meddle {shader_package} {version.current_version}'
         # replace node tree with copy of the one from the resource
         template_material = bpy.data.materials.get(resource_name)
         if not template_material:
