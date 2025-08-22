@@ -279,51 +279,6 @@ class JoinByMaterial(Operator):
         self.report({'INFO'}, f"Joined {len(candidates)} objects using material '{target_name}'")
         return {'FINISHED'}
 
-class JoinByMaterialAll(Operator):
-    """Join meshes across the scene, per first material group (original behavior)"""
-    bl_idname = "meddle.join_by_material_all"
-    bl_label = "Join by Material (All in Scene)"
-    bl_description = "Join all mesh objects in the scene grouped by their first material"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        # Ensure object mode
-        if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-        mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == 'MESH']
-        if not mesh_objects:
-            self.report({'WARNING'}, "No mesh objects found in the scene")
-            return {'CANCELLED'}
-
-        # Group by first material name (or "No Material")
-        material_groups = {}
-        for obj in mesh_objects:
-            if obj.data.materials:
-                material_name = obj.data.materials[0].name if obj.data.materials[0] else "No Material"
-            else:
-                material_name = "No Material"
-            material_groups.setdefault(material_name, []).append(obj)
-
-        joined_groups = 0
-        for material_name, objects in material_groups.items():
-            if len(objects) <= 1:
-                continue
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in objects:
-                obj.select_set(True)
-            bpy.context.view_layer.objects.active = objects[0]
-            bpy.ops.object.join()
-            joined_groups += 1
-            logger.info("Joined %d objects with material '%s'", len(objects), material_name)
-
-        if joined_groups > 0:
-            self.report({'INFO'}, f"Successfully joined {joined_groups} material groups")
-        else:
-            self.report({'INFO'}, "No objects to join (each material has only one object)")
-
-        return {'FINISHED'}
-
 class JoinByDistance(Operator):
     """Join meshes within selected objects by merging nearby vertices"""
     bl_idname = "meddle.join_by_distance"
@@ -383,6 +338,95 @@ class JoinByDistance(Operator):
         self.report({'INFO'}, f"Processed {processed_count} objects with merge distance {merge_distance}")
         
         return {'FINISHED'}
+
+class JoinMeshesToParent(Operator):
+    """Join selected mesh objects into their mesh parent to reduce object count.
+    Groups selected children by their parent and performs a join per-parent.
+    """
+    bl_idname = "meddle.join_meshes_to_parent"
+    bl_label = "Join Meshes to Parent"
+    bl_description = "Join selected mesh children into their parent object to optimize performance"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        ensure_object_mode(context, 'OBJECT')
+
+        # Collect selected mesh objects that have a mesh parent
+        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
+        if not selected_meshes:
+            self.report({'WARNING'}, "No mesh objects selected")
+            return {'CANCELLED'}
+
+        # Group children by parent object
+        groups = {}
+        for obj in selected_meshes:
+            parent = getattr(obj, 'parent', None)
+            if parent and parent.type == 'MESH' and parent.name in bpy.data.objects:
+                if parent not in groups:
+                    groups[parent] = []
+                # avoid attempting to join the parent to itself
+                if obj != parent:
+                    groups[parent].append(obj)
+
+        if not groups:
+            self.report({'INFO'}, "No selected meshes have a mesh parent to join into")
+            return {'CANCELLED'}
+
+        total_joined = 0
+
+        # Perform join for each parent group
+        for parent, children in groups.items():
+            if not children:
+                continue
+
+            # Deselect everything, then select parent and its children
+            bpy.ops.object.select_all(action='DESELECT')
+            try:
+                parent.select_set(True)
+            except Exception:
+                # If we can't select the parent, skip
+                logger.warning("Could not select parent '%s'", getattr(parent, 'name', '<unknown>'))
+                continue
+
+            for c in children:
+                try:
+                    c.select_set(True)
+                except Exception:
+                    logger.warning("Could not select child '%s'", getattr(c, 'name', '<unknown>'))
+
+            # Make parent the active object
+            try:
+                context.view_layer.objects.active = parent
+            except Exception:
+                logger.warning("Could not make '%s' active", getattr(parent, 'name', '<unknown>'))
+
+            # Ensure object mode and join
+            ensure_object_mode(context, 'OBJECT')
+            try:
+                bpy.ops.object.join()
+                joined_count = len(children)
+                total_joined += joined_count
+                logger.info("Joined %d child(ren) into parent '%s'", joined_count, parent.name)
+            except Exception as e:
+                logger.exception("Failed to join children into parent '%s': %s", getattr(parent, 'name', '<unknown>'), str(e))
+                # attempt to continue with other groups
+                continue
+
+        # Restore selection to parents that remain
+        bpy.ops.object.select_all(action='DESELECT')
+        for parent in groups.keys():
+            try:
+                if parent.name in bpy.data.objects:
+                    parent.select_set(True)
+            except Exception:
+                pass
+
+        if total_joined > 0:
+            self.report({'INFO'}, f"Joined {total_joined} objects into their parents")
+            return {'FINISHED'}
+        else:
+            self.report({'INFO'}, "No meshes were joined to parents")
+            return {'CANCELLED'}
 
 class PurgeUnused(Operator):
     """Remove all unused datablocks from the scene"""
@@ -895,11 +939,11 @@ classes = [
     FindProperties,
     BoostLights,
     JoinByMaterial,
-    JoinByMaterialAll,
     JoinByDistance,
     PurgeUnused,
     AddVoronoiTexture,
     CleanBoneHierarchy,
     ImportAnimationGLTF,
-    DeleteEmptyVertexGroups
+    DeleteEmptyVertexGroups,
+    JoinMeshesToParent
 ]

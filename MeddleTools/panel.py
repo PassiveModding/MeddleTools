@@ -106,13 +106,13 @@ class MeddleUtilsPanel(bpy.types.Panel):
         props = context.scene.meddle_settings
         
         # Find Properties section
-        box = layout.box()
-        col = box.column()
-        col.label(text="Find Properties", icon='VIEWZOOM')
-        row = col.row()
-        row.prop(props, 'search_property', text='Property')
-        row = col.row()
-        row.operator(utils.FindProperties.bl_idname, text='Search Materials')
+        # box = layout.box()
+        # col = box.column()
+        # col.label(text="Find Properties", icon='VIEWZOOM')
+        # row = col.row()
+        # row.prop(props, 'search_property', text='Property')
+        # row = col.row()
+        # row.operator(utils.FindProperties.bl_idname, text='Search Materials')
         
         # Light Boost section
         box = layout.box()
@@ -128,21 +128,21 @@ class MeddleUtilsPanel(bpy.types.Panel):
         col = box.column()
         col.label(text="Mesh Operations", icon='MESH_DATA')
         row = col.row()
-        row.operator(utils.JoinByMaterial.bl_idname, text='Join by Material (Selected)')
+        row.operator(utils.JoinByMaterial.bl_idname, text='Join Meshes by Material', icon='MESH_CUBE')
         row = col.row()
-        row.operator(utils.JoinByMaterialAll.bl_idname, text='Join by Material (All in scene)')
+        row.operator(utils.JoinMeshesToParent.bl_idname, text='Join Meshes to Parent', icon='GROUP')
         row = col.row()
         row.prop(props, 'merge_distance', text='Merge Distance')
         row = col.row()
-        row.operator(utils.JoinByDistance.bl_idname, text='Join by Distance')
+        row.operator(utils.JoinByDistance.bl_idname, text='Join Vertices by Distance', icon='PARTICLE_DATA')
         
         # Material Operations section
         box = layout.box()
         col = box.column()
         col.label(text="Material Operations", icon='MATERIAL')
         row = col.row()
-        row.operator(utils.AddVoronoiTexture.bl_idname, text='Apply Voronoi to Selected')
-        
+        row.operator(utils.AddVoronoiTexture.bl_idname, text='Apply Voronoi to Selected', icon='TEXTURE')
+
         # Animation & Rigging section
         box = layout.box()
         col = box.column()
