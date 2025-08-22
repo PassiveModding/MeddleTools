@@ -176,3 +176,7 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
             return {'FINISHED'}
         finally:
             context.window.cursor_set('DEFAULT')
+
+classes = [
+    MeddleToolsInstallUpdate,
+]

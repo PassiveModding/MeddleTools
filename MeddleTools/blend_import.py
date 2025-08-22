@@ -12,7 +12,7 @@ class ImportShaders(bpy.types.Operator):
         return {'FINISHED'}
 
 def import_shaders():        
-    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders_new.blend")
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     
     with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
         for material in data_from.materials:
@@ -28,7 +28,7 @@ def import_shaders():
         #     bpy.ops.wm.append(filename=node_group, directory=blendfile + "/NodeTree/", do_reuse_local_id=True)
 
 def replace_shaders():
-    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders_new.blend")
+    blendfile = path.join(path.dirname(path.abspath(__file__)), "shaders.blend")
     
     with bpy.data.libraries.load(blendfile, link=False) as (data_from, data_to):
         for material in data_from.materials:
@@ -52,3 +52,8 @@ class ReplaceShaders(bpy.types.Operator):
         replace_shaders()
             
         return {'FINISHED'}
+    
+classes = [
+    ImportShaders,
+    ReplaceShaders
+]

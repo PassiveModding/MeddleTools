@@ -1,8 +1,11 @@
+from functools import cache
+from multiprocessing import context
 import bpy
 from os import path
 
 from . import node_configs
 from . import blend_import
+from . import lighting
     
 
 class ModelImport(bpy.types.Operator):
@@ -41,6 +44,17 @@ class ModelImport(bpy.types.Operator):
                         continue
                     
                     node_configs.map_mesh(mesh, cache_dir)
+                    
+                imported_lights = [obp for obp in context.selected_objects if obp.name.startswith("Light")]
+                
+                for light in imported_lights:
+                    if light is None:
+                        continue
+                    
+                    try:
+                        lighting.setupLight(light)
+                    except Exception as e:
+                        print(e)
                             
             for file in self.files:
                 filepath = path.join(self.directory, file.name)
@@ -49,3 +63,32 @@ class ModelImport(bpy.types.Operator):
             return {'FINISHED'}
         finally:
             bpy.context.window.cursor_set('DEFAULT')
+            
+class ApplyToSelected(bpy.types.Operator):
+    bl_idname = "meddle.apply_to_selected"
+    bl_label = "Apply Shaders to Selected"
+    bl_description = "Apply shaders to the selected objects based on their shader package"
+    directory: bpy.props.StringProperty(subtype='DIR_PATH')  
+
+    def invoke(self, context, event):
+        if context is None:
+            return {'CANCELLED'}
+        
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+    
+    def execute(self, context):
+        if context is None:
+            return {'CANCELLED'}
+        
+        selected_objects = context.selected_objects
+        for obj in selected_objects:
+            if obj.type == 'MESH':
+                node_configs.map_mesh(obj, self.directory, True)
+                
+        return {'FINISHED'}
+
+classes = [
+    ModelImport,
+    ApplyToSelected
+]
