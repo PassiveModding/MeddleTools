@@ -157,6 +157,8 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row = col.row()
         row.operator(utils.CleanBoneHierarchy.bl_idname, text='Clean Bone Hierarchy', icon='ARMATURE_DATA')
         row = col.row()
+        row.operator(utils.RemoveBonesByPrefix.bl_idname, text='Remove Bones by Prefix', icon='ARMATURE_DATA')
+        row = col.row()
         row.operator(utils.DeleteEmptyVertexGroups.bl_idname, text='Delete Empty Vertex Groups', icon='GROUP_VERTEX')
         row = col.row()
         row.operator(utils.DeleteUnusedUvMaps.bl_idname, text='Delete Unused UV Maps', icon='MESH_UVSPHERE')
