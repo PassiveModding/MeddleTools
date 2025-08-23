@@ -226,58 +226,90 @@ class JoinByMaterial(Operator):
     bl_options = {'REGISTER', 'UNDO'}
     
     def execute(self, context):
-        # Ensure we're in object mode
-        if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
+        # Work with selected mesh objects and group them by material
+        ensure_object_mode(context, 'OBJECT')
 
-        active_obj = bpy.context.view_layer.objects.active
-        if not active_obj or active_obj.type != 'MESH':
-            self.report({'WARNING'}, "Select a mesh object with the material you want to join by")
+        selected_meshes = get_selected_meshes(context)
+        if not selected_meshes:
+            self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
 
-        # Determine the target material: prefer active material, fallback to first slot
-        target_mat = active_obj.active_material
-        if target_mat is None and active_obj.data.materials:
-            target_mat = active_obj.data.materials[0]
-
-        if target_mat is None:
-            self.report({'WARNING'}, "Active mesh has no material")
-            return {'CANCELLED'}
-
-        target_name = target_mat.name
-
-        # Collect all mesh objects in the scene that use this material in any slot
-        candidates = []
-        for obj in bpy.context.scene.objects:
-            if obj.type != 'MESH':
-                continue
+        # Map material name -> set of objects that use it
+        mat_to_objs = {}
+        for obj in selected_meshes:
             try:
-                if any(ms.material and ms.material.name == target_name for ms in obj.material_slots):
-                    candidates.append(obj)
+                for slot in getattr(obj, 'material_slots', []):
+                    mat = getattr(slot, 'material', None)
+                    if mat is None:
+                        continue
+                    key = mat.name
+                    if key not in mat_to_objs:
+                        mat_to_objs[key] = {
+                            'material': mat,
+                            'objects': set()
+                        }
+                    mat_to_objs[key]['objects'].add(obj)
             except Exception:
-                # Defensive: some objects may have problematic slots
                 logger.exception("Error while checking material slots for object '%s'", getattr(obj, 'name', '<unknown>'))
 
-        if len(candidates) < 2:
-            self.report({'INFO'}, f"Found {len(candidates)} object(s) using material '{target_name}' — nothing to join")
+        # Only perform joins for material groups with 2 or more objects
+        join_groups = [v for v in mat_to_objs.values() if len(v['objects']) >= 2]
+        if not join_groups:
+            self.report({'INFO'}, "No groups of selected meshes share the same material — nothing to join")
             return {'CANCELLED'}
 
-        # Deselect all and select only the candidates
-        bpy.ops.object.select_all(action='DESELECT')
-        for obj in candidates:
-            obj.select_set(True)
+        total_joined = 0
+        original_active = context.view_layer.objects.active
 
-        # Make a stable active object (prefer the current active if it's in the set)
-        if active_obj in candidates:
-            bpy.context.view_layer.objects.active = active_obj
+        for group in join_groups:
+            objs = list(group['objects'])
+            # Deselect all then select group's objects
+            try:
+                bpy.ops.object.select_all(action='DESELECT')
+            except Exception:
+                _safe_deselect_all_objects(context)
+
+            for o in objs:
+                try:
+                    o.select_set(True)
+                except Exception:
+                    logger.warning("Could not select object '%s' for join", getattr(o, 'name', '<unknown>'))
+
+            # Prefer previous active if it's part of the group
+            if original_active in objs:
+                context.view_layer.objects.active = original_active
+            else:
+                context.view_layer.objects.active = objs[0]
+
+            # Ensure object mode and attempt join
+            ensure_object_mode(context, 'OBJECT')
+            try:
+                bpy.ops.object.join()
+                joined_count = len(objs)
+                total_joined += joined_count
+                logger.info("Joined %d objects using material '%s'", joined_count, group['material'].name)
+            except Exception as e:
+                logger.exception("Failed to join objects for material '%s': %s", group['material'].name, str(e))
+                # continue with other groups
+                continue
+
+        # Restore a sensible selection: select the active object if still present
+        try:
+            bpy.ops.object.select_all(action='DESELECT')
+        except Exception:
+            _safe_deselect_all_objects(context)
+        if context.view_layer.objects.active and context.view_layer.objects.active.name in bpy.data.objects:
+            try:
+                context.view_layer.objects.active.select_set(True)
+            except Exception:
+                pass
+
+        if total_joined > 0:
+            self.report({'INFO'}, f"Joined {total_joined} objects across {len(join_groups)} material group(s)")
+            return {'FINISHED'}
         else:
-            bpy.context.view_layer.objects.active = candidates[0]
-
-        # Join them
-        bpy.ops.object.join()
-
-        self.report({'INFO'}, f"Joined {len(candidates)} objects using material '{target_name}'")
-        return {'FINISHED'}
+            self.report({'INFO'}, "No objects were joined")
+            return {'CANCELLED'}
 
 class JoinByDistance(Operator):
     """Join meshes within selected objects by merging nearby vertices"""
@@ -580,6 +612,47 @@ class AddVoronoiTexture(Operator):
             else:
                 logger.warning("Texture node %s does not have a Vector input.", texNode.name)
         
+        return {'FINISHED'}
+
+class DeleteUnusedUvMaps(Operator):
+    """Checks materials used by a mesh, deleting all uvmaps greater than the default which are not referenced"""
+    bl_idname = "meddle.delete_unused_uvmaps"
+    bl_label = "Delete Unused UV Maps"
+    bl_description = "Delete unused UV maps from selected mesh objects that are not referenced by any material"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    def execute(self, context):
+        # Get selected mesh objects
+        selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']
+        if not selected_meshes:
+            self.report({'WARNING'}, "No mesh objects selected")
+            return {'CANCELLED'}
+
+        # Iterate over selected meshes and their materials
+        removed_count = 0
+        for mesh in selected_meshes:
+            mesh_uv_maps = [uv for uv in mesh.data.uv_layers if uv.name != "UVMap"]
+            if len(mesh_uv_maps) == 0:
+                continue
+
+            referenced_uv_maps = []
+            for slot in mesh.material_slots:
+                if not slot.material:
+                    continue
+
+                node_tree = slot.material.node_tree
+                uv_map_nodes = [node for node in node_tree.nodes if node.type == 'UVMAP']
+                for uv_map in uv_map_nodes:
+                    referenced_uv_maps.append(uv_map.uv_map)
+
+            # remove all in mesh_uv_maps which are not in referenced_uv_maps
+            for uv in mesh_uv_maps:
+                if uv.name not in referenced_uv_maps:
+                    mesh.data.uv_layers.remove(uv)
+                    removed_count += 1
+
+        self.report({'INFO'}, f"Removed {removed_count} unused UV maps from selected meshes")
+
         return {'FINISHED'}
 
 class CleanBoneHierarchy(Operator):
@@ -945,5 +1018,6 @@ classes = [
     CleanBoneHierarchy,
     ImportAnimationGLTF,
     DeleteEmptyVertexGroups,
-    JoinMeshesToParent
+    JoinMeshesToParent,
+    DeleteUnusedUvMaps,
 ]

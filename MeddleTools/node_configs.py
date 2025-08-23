@@ -413,7 +413,11 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
         
         new_name = source_material.name
         if not new_name.startswith('Meddle '):
-            new_name = f'Meddle {version.current_version} {new_name}'
+            # remove substring _<shader_package> if exists
+            shpk_substring = f"_{shader_package}"
+            if shpk_substring in new_name:
+                new_name = new_name.replace(shpk_substring, '')
+            new_name = f'Meddle {version.current_version} {shader_package} {new_name}'
         elif not force_apply:
             logger.debug("Material %s already has Meddle prefix, skipping.", new_name)
             return False  # do not apply if already meddle material

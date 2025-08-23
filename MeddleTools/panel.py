@@ -159,6 +159,8 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row = col.row()
         row.operator(utils.DeleteEmptyVertexGroups.bl_idname, text='Delete Empty Vertex Groups', icon='GROUP_VERTEX')
         row = col.row()
+        row.operator(utils.DeleteUnusedUvMaps.bl_idname, text='Delete Unused UV Maps', icon='MESH_UVSPHERE')
+        row = col.row()
         row.operator(utils.PurgeUnused.bl_idname, text='Purge Unused Data')    
 
 class MeddleCreditPanel(bpy.types.Panel):
