@@ -463,26 +463,31 @@ def map_mesh(mesh: bpy.types.Mesh, cache_directory: str, force_apply: bool = Fal
         setGroupProperties(mesh, slot.material)
         setColorAttributes(mesh, slot.material)
         setColorTableRamps(mesh, slot.material)
-
-def getSingleValueForType(row, rowProp, type):
-    if type == 'Float':
-        return row[rowProp]
-    elif type == 'FloatPct':
-        return row[rowProp] / 100
-    else:
-        raise Exception(f"Unsupported type {type} for single value")
-
-def getValueForType(row, rowProp, type):
+    
+def getValuesForType(row, rowProp, type):
+    def convertValue(val, divisor = None):
+        if val == 'Infinity':
+            return float('inf')
+        elif val == '-Infinity':
+            return float('-inf')
+        elif val == 'NaN':
+            return float('nan')
+        else:
+            return val
+    
     if type == 'XYZ':
-        return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
+        return [convertValue(row[rowProp]['X']), convertValue(row[rowProp]['Y']), convertValue(row[rowProp]['Z'])]
     elif type == 'Float':
-        return (row[rowProp], row[rowProp], row[rowProp], 1.0)
-    elif type == 'FloatPct':
-        return (row[rowProp] / 100, row[rowProp] / 100, row[rowProp] / 100, 1.0)
+        return [convertValue(row[rowProp])]
     elif type == 'TileMatrix':
-        return (row[rowProp]['UU'], row[rowProp]['UV'], row[rowProp]['VU'], row[rowProp]['VV'])
+        return [convertValue(row[rowProp]['UU']), convertValue(row[rowProp]['UV']), convertValue(row[rowProp]['VU']), convertValue(row[rowProp]['VV'])]
     else:
         raise Exception(f"Unsupported type {type}")
+    
+def padRgbaValues(list):
+    while len(list) < 4:
+        list.append(1.0)
+    return list
     
 def clearRamp(ramp):
     while len(ramp.color_ramp.elements) > 1:
@@ -530,7 +535,7 @@ class ColorTableRampLookup:
             pos = i / len(set)
             if self.rowPropName not in row:
                 raise Exception(f"Row property {self.rowPropName} not found in row")
-            row_values = getValueForType(row, self.rowPropName, self.rowPropType)
+            row_values = padRgbaValues(getValuesForType(row, self.rowPropName, self.rowPropType))
             if i == 0:
                 colorRamp.color_ramp.elements[0].position = pos
                 colorRamp.color_ramp.elements[0].color = row_values
@@ -557,27 +562,31 @@ class PackedColorTableRampLookup:
             for (rowPropName, rowPropType) in self.rowNameTypeMaps:
                 if rowPropName not in row:
                     raise Exception(f"Row property {rowPropName} not found in row")
-                row_values.append(getSingleValueForType(row, rowPropName, rowPropType))
-            while len(row_values) < 4:
-                row_values.append(0.0)
-            if i == 0:
-                colorRamp.color_ramp.elements[0].position = i / len(set)
-                colorRamp.color_ramp.elements[0].color = row_values
-            else:
-                element = colorRamp.color_ramp.elements.new(i / len(set))
-                element.color = row_values
+                values = getValuesForType(row, rowPropName, rowPropType)
+                for val in values:
+                    row_values.append(val)
+            row_values = padRgbaValues(row_values)
+            try:
+                if i == 0:
+                    colorRamp.color_ramp.elements[0].position = i / len(set)
+                    colorRamp.color_ramp.elements[0].color = row_values
+                else:
+                    element = colorRamp.color_ramp.elements.new(i / len(set))
+                    element.color = row_values
+            except Exception as e:
+                logger.warning("Error setting color for row %d: %s", i, e)
 
 RampLookups = {
     "ColorRampA": ColorTableRampLookup("Diffuse", "XYZ", False),
     "ColorRampB": ColorTableRampLookup("Diffuse", "XYZ", True),
-    "SpecularRampA": ColorTableRampLookup("Specular", "XYZ", False),
-    "SpecularRampB": ColorTableRampLookup("Specular", "XYZ", True),
+    "SpecularRampA": PackedColorTableRampLookup([("Specular", "XYZ"), ("Anisotropy", "Float")], False),
+    "SpecularRampB": PackedColorTableRampLookup([("Specular", "XYZ"), ("Anisotropy", "Float")], True),
     "EmissionRampA": ColorTableRampLookup("Emissive", "XYZ", False),
     "EmissionRampB": ColorTableRampLookup("Emissive", "XYZ", True),
-    "MetalnessRoughnessGlossSpecularA": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "FloatPct"), ("SpecularStrength", "Float")], False),
-    "MetalnessRoughnessGlossSpecularB": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "FloatPct"), ("SpecularStrength", "Float")], True),
-    "AnisotropyRampA": ColorTableRampLookup("Anisotropy", "Float", False),
-    "AnisotropyRampB": ColorTableRampLookup("Anisotropy", "Float", True),
+    "MetalnessRoughnessGlossSpecularA": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "Float"), ("SpecularStrength", "Float")], False),
+    "MetalnessRoughnessGlossSpecularB": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "Float"), ("SpecularStrength", "Float")], True),
+    # "AnisotropyRampA": ColorTableRampLookup("Anisotropy", "Float", False),
+    # "AnisotropyRampB": ColorTableRampLookup("Anisotropy", "Float", True),
     "SheenPropertiesA": PackedColorTableRampLookup([("SheenRate", "Float"), ("SheenTint", "Float"), ("SheenAptitude", "Float")], False),
     "SheenPropertiesB": PackedColorTableRampLookup([("SheenRate", "Float"), ("SheenTint", "Float"), ("SheenAptitude", "Float")], True),
     "SpherePropertiesA": PackedColorTableRampLookup([("SphereIndex", "Float"), ("SphereMask", "Float")], False),
