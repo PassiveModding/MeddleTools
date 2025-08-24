@@ -364,14 +364,11 @@ NodeGroupConfigs = {
         ColorMapping('SkinColor', 'SkinColor'),
         MaterialKeyMapping('GetValues', 'GetValuesCompatibility', 'IS_COMPATIBILITY', True),
         MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'IS_COMPATIBILITY', True), # old meddle naming?  
-        # MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
-        # MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
+        MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
+        MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
     ]
 }
 
-LabeledGroupConfigs = {
-
-}
 def copy_custom_properties(material: bpy.types.Material):
     custom_props = {}
     for key in material.keys():
@@ -393,6 +390,15 @@ def apply_custom_properties(material: bpy.types.Material, custom_props: dict):
         except Exception as e:
             logger.warning("Could not apply custom property '%s' to '%s': %s", key, material.name, e)
 
+shader_package_mappings = {
+    "characterlegacy.shpk": "character.shpk",
+    "characterstockings.shpk": "character.shpk",
+    "characterinc.shpk": "character.shpk",
+    "characterglass.shpk": "character.shpk",
+    "characterscroll.shpk": "character.shpk",
+    "river.shpk": "water.shpk"
+}
+
 def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
     if slot.material is None:
         return False
@@ -404,7 +410,9 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
             logger.debug("Material does not have a shader package defined.")
             return False
         
-        resource_name = f'meddle {shader_package} {version.current_version}'
+        resource_shpk = shader_package_mappings.get(shader_package, shader_package)
+        
+        resource_name = f'meddle {resource_shpk} {version.current_version}'
         # replace node tree with copy of the one from the resource
         template_material = bpy.data.materials.get(resource_name)
         if not template_material:
@@ -456,69 +464,108 @@ def map_mesh(mesh: bpy.types.Mesh, cache_directory: str, force_apply: bool = Fal
         setColorAttributes(mesh, slot.material)
         setColorTableRamps(mesh, slot.material)
 
+def getSingleValueForType(row, rowProp, type):
+    if type == 'Float':
+        return row[rowProp]
+    elif type == 'FloatPct':
+        return row[rowProp] / 100
+    else:
+        raise Exception(f"Unsupported type {type} for single value")
+
+def getValueForType(row, rowProp, type):
+    if type == 'XYZ':
+        return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
+    elif type == 'Float':
+        return (row[rowProp], row[rowProp], row[rowProp], 1.0)
+    elif type == 'FloatPct':
+        return (row[rowProp] / 100, row[rowProp] / 100, row[rowProp] / 100, 1.0)
+    elif type == 'TileMatrix':
+        return (row[rowProp]['UU'], row[rowProp]['UV'], row[rowProp]['VU'], row[rowProp]['VV'])
+    else:
+        raise Exception(f"Unsupported type {type}")
+    
+def clearRamp(ramp):
+    while len(ramp.color_ramp.elements) > 1:
+        ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
+        
+def getOddEvenRows(material: bpy.types.Material):
+    if 'ColorTable' not in material:
+        return ([], [])
+    
+    colorSet = material['ColorTable']
+    if 'ColorTable' not in colorSet:
+        return ([], [])
+    
+    colorTable = colorSet['ColorTable']
+    if 'Rows' not in colorTable:
+        return ([], [])
+    
+    rows = colorTable['Rows']
+    odds = []
+    evens = []
+    for i, row in enumerate(rows):
+        if i % 2 == 0:
+            evens.append(row)
+        else:
+            odds.append(row)
+    return (odds, evens)
+    
+
 class ColorTableRampLookup:
     def __init__(self, rowPropName: str, rowPropType: str, b_ramp: bool):
         self.rowPropName = rowPropName
         self.rowPropType = rowPropType
         self.b_ramp = b_ramp
         
-    def apply(self, material: bpy.types.Material, colorRamp):
-        if 'ColorTable' not in material:
-            return
         
-        colorSet = material['ColorTable']
-        if 'ColorTable' not in colorSet:
-            return
-        
-        colorTable = colorSet['ColorTable']
-        if 'Rows' not in colorTable:
-            return
-
-        rows = colorTable['Rows']
-
-
-        rowProp = self.rowPropName
-        def getValueForType(row, type):
-            if type == 'XYZ':
-                return (row[rowProp]['X'], row[rowProp]['Y'], row[rowProp]['Z'], 1.0)
-            elif type == 'Float':
-                return (row[rowProp], row[rowProp], row[rowProp], 1.0)
-            elif type == 'FloatPct':
-                return (row[rowProp] / 100, row[rowProp] / 100, row[rowProp] / 100, 1.0)
-            
-        def clearRamp(ramp):
-            while len(ramp.color_ramp.elements) > 1:
-                ramp.color_ramp.elements.remove(ramp.color_ramp.elements[0])
-        
+    def apply(self, material: bpy.types.Material, colorRamp):        
         clearRamp(colorRamp)
-        
-        odds = []
-        evens = []
-        for i, row in enumerate(rows):
-            if i % 2 == 0:
-                evens.append(row)
-            else:
-                odds.append(row)
-                
-        set = None
-        if self.b_ramp:
-            set = odds
-        else:
-            set = evens
+        odds, evens = getOddEvenRows(material)
+
+        set = odds if self.b_ramp else evens
 
         for i, row in enumerate(set):
             if self.rowPropName not in row:
                 continue
             pos = i / len(set)
+            if self.rowPropName not in row:
+                raise Exception(f"Row property {self.rowPropName} not found in row")
+            row_values = getValueForType(row, self.rowPropName, self.rowPropType)
             if i == 0:
                 colorRamp.color_ramp.elements[0].position = pos
-                colorRamp.color_ramp.elements[0].color = getValueForType(row, self.rowPropType)
+                colorRamp.color_ramp.elements[0].color = row_values
             else:
                 element = colorRamp.color_ramp.elements.new(pos)
                 try:
-                    element.color = getValueForType(row, self.rowPropType)
+                    element.color = row_values
                 except Exception as e:
                     logger.warning("Error setting color for row %d: %s", i, e)
+                    
+class PackedColorTableRampLookup:
+    def __init__(self, rowNameTypeMaps: list[tuple[str, str]], b_ramp: bool):
+        self.rowNameTypeMaps = rowNameTypeMaps
+        self.b_ramp = b_ramp
+        
+    def apply(self, material: bpy.types.Material, colorRamp):
+        clearRamp(colorRamp)
+
+        odds, evens = getOddEvenRows(material)
+        set = odds if self.b_ramp else evens
+
+        for i, row in enumerate(set):
+            row_values = []
+            for (rowPropName, rowPropType) in self.rowNameTypeMaps:
+                if rowPropName not in row:
+                    raise Exception(f"Row property {rowPropName} not found in row")
+                row_values.append(getSingleValueForType(row, rowPropName, rowPropType))
+            while len(row_values) < 4:
+                row_values.append(0.0)
+            if i == 0:
+                colorRamp.color_ramp.elements[0].position = i / len(set)
+                colorRamp.color_ramp.elements[0].color = row_values
+            else:
+                element = colorRamp.color_ramp.elements.new(i / len(set))
+                element.color = row_values
 
 RampLookups = {
     "ColorRampA": ColorTableRampLookup("Diffuse", "XYZ", False),
@@ -527,22 +574,34 @@ RampLookups = {
     "SpecularRampB": ColorTableRampLookup("Specular", "XYZ", True),
     "EmissionRampA": ColorTableRampLookup("Emissive", "XYZ", False),
     "EmissionRampB": ColorTableRampLookup("Emissive", "XYZ", True),
-    "MetalnessRampA": ColorTableRampLookup("Metalness", "Float", False),
-    "MetalnessRampB": ColorTableRampLookup("Metalness", "Float", True),
-    "RoughnessRampA": ColorTableRampLookup("Roughness", "Float", False),
-    "RoughnessRampB": ColorTableRampLookup("Roughness", "Float", True),
-    "GlossRampA": ColorTableRampLookup("GlossStrength", "FloatPct", False),
-    "GlossRampB": ColorTableRampLookup("GlossStrength", "FloatPct", True),
-    "SpecStrengthRampA": ColorTableRampLookup("SpecularStrength", "Float", False),
-    "SpecStrengthRampB": ColorTableRampLookup("SpecularStrength", "Float", True),
-    "SheenRateRampA": ColorTableRampLookup("SheenRate", "Float", False),
-    "SheenRateRampB": ColorTableRampLookup("SheenRate", "Float", True),
-    "SheenTintRampA": ColorTableRampLookup("SheenTint", "Float", False),
-    "SheenTintRampB": ColorTableRampLookup("SheenTint", "Float", True),
-    "SheenAptitudeRampA": ColorTableRampLookup("SheenAptitude", "Float", False),
-    "SheenAptitudeRampB": ColorTableRampLookup("SheenAptitude", "Float", True),
+    "MetalnessRoughnessGlossSpecularA": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "FloatPct"), ("SpecularStrength", "Float")], False),
+    "MetalnessRoughnessGlossSpecularB": PackedColorTableRampLookup([("Metalness", "Float"), ("Roughness", "Float"), ("GlossStrength", "FloatPct"), ("SpecularStrength", "Float")], True),
+    # "MetalnessRampA": ColorTableRampLookup("Metalness", "Float", False),
+    # "MetalnessRampB": ColorTableRampLookup("Metalness", "Float", True),
+    # "RoughnessRampA": ColorTableRampLookup("Roughness", "Float", False),
+    # "RoughnessRampB": ColorTableRampLookup("Roughness", "Float", True),
+    # "GlossRampA": ColorTableRampLookup("GlossStrength", "FloatPct", False),
+    # "GlossRampB": ColorTableRampLookup("GlossStrength", "FloatPct", True),
+    # "SpecStrengthRampA": ColorTableRampLookup("SpecularStrength", "Float", False),
+    # "SpecStrengthRampB": ColorTableRampLookup("SpecularStrength", "Float", True),
+    # "SheenRateRampA": ColorTableRampLookup("SheenRate", "Float", False),
+    # "SheenRateRampB": ColorTableRampLookup("SheenRate", "Float", True),
+    # "SheenTintRampA": ColorTableRampLookup("SheenTint", "Float", False),
+    # "SheenTintRampB": ColorTableRampLookup("SheenTint", "Float", True),
+    # "SheenAptitudeRampA": ColorTableRampLookup("SheenAptitude", "Float", False),
+    # "SheenAptitudeRampB": ColorTableRampLookup("SheenAptitude", "Float", True),
+    # "AnisotropyRampA": ColorTableRampLookup("Anisotropy", "Float", False),
+    # "AnisotropyRampB": ColorTableRampLookup("Anisotropy", "Float", True),
     "AnisotropyRampA": ColorTableRampLookup("Anisotropy", "Float", False),
     "AnisotropyRampB": ColorTableRampLookup("Anisotropy", "Float", True),
+    "SheenPropertiesA": PackedColorTableRampLookup([("SheenRate", "Float"), ("SheenTint", "Float"), ("SheenAptitude", "Float")], False),
+    "SheenPropertiesB": PackedColorTableRampLookup([("SheenRate", "Float"), ("SheenTint", "Float"), ("SheenAptitude", "Float")], True),
+    "SpherePropertiesA": PackedColorTableRampLookup([("SphereIndex", "Float"), ("SphereMask", "Float")], False),
+    "SpherePropertiesB": PackedColorTableRampLookup([("SphereIndex", "Float"), ("SphereMask", "Float")], True),
+    "TilePropertiesA": PackedColorTableRampLookup([("TileIndex", "Float"), ("TileAlpha", "Float")], False),
+    "TilePropertiesB": PackedColorTableRampLookup([("TileIndex", "Float"), ("TileAlpha", "Float")], True),
+    "TileMatrixPropertiesA": ColorTableRampLookup("TileMatrix", "TileMatrix", False),
+    "TileMatrixPropertiesB": ColorTableRampLookup("TileMatrix", "TileMatrix", True)
 }
 
 def setColorTableRamps(mesh: bpy.types.Mesh, material: bpy.types.Material):
