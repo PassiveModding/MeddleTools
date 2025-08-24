@@ -366,6 +366,7 @@ NodeGroupConfigs = {
         MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'IS_COMPATIBILITY', True), # old meddle naming?  
         MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
         MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
+        MaterialKeyMapping('ShaderPackage', 'charactertransparency.shpk', 'IS_TRANSPARENCY', True),
     ]
 }
 
@@ -396,6 +397,7 @@ shader_package_mappings = {
     "characterinc.shpk": "character.shpk",
     "characterglass.shpk": "character.shpk",
     "characterscroll.shpk": "character.shpk",
+    "charactertransparency.shpk": "character.shpk",
     "river.shpk": "water.shpk"
 }
 
