@@ -2,6 +2,7 @@ import bpy
 import logging
 from bpy.types import Operator
 import os
+from collections import defaultdict
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -383,78 +384,125 @@ class JoinMeshesToParent(Operator):
     def execute(self, context):
         ensure_object_mode(context, 'OBJECT')
 
-        # Collect selected mesh objects that have a mesh parent
-        selected_meshes = [o for o in context.selected_objects if o.type == 'MESH']
-        if not selected_meshes:
-            self.report({'WARNING'}, "No mesh objects selected")
+        # Collect selected mesh objects which have a mesh parent
+        sel = context.selected_objects
+        # Fast exit
+        if not sel:
+            self.report({'WARNING'}, "No objects selected")
             return {'CANCELLED'}
 
-        # Group children by parent object
-        groups = {}
-        for obj in selected_meshes:
-            parent = getattr(obj, 'parent', None)
-            if parent and parent.type == 'MESH' and parent.name in bpy.data.objects:
-                if parent not in groups:
-                    groups[parent] = []
-                # avoid attempting to join the parent to itself
-                if obj != parent:
-                    groups[parent].append(obj)
+        mesh_children = [o for o in sel if o.type == 'MESH' and getattr(o, 'parent', None)
+                         and getattr(o.parent, 'type', None) == 'MESH' and o.parent.name in bpy.data.objects and o.parent != o]
 
-        if not groups:
-            self.report({'INFO'}, "No selected meshes have a mesh parent to join into")
+        if not mesh_children:
+            self.report({'INFO'}, "No selected mesh children with a mesh parent")
             return {'CANCELLED'}
 
-        total_joined = 0
+        # Group children by parent (dict[parent] = list[child])
+        groups = defaultdict(list)
+        for child in mesh_children:
+            groups[child.parent].append(child)
 
-        # Perform join for each parent group
-        for parent, children in groups.items():
+        # Remove parents that ended up with no valid children (defensive)
+        parents = [p for p, kids in groups.items() if kids]
+        if not parents:
+            self.report({'INFO'}, "Nothing to join (no valid parent groups)")
+            return {'CANCELLED'}
+
+        # --- Bottom-up ordering ---
+        # To avoid transform propagation / parenting quirks when both a parent and its ancestor
+        # are involved in the same selection, process deeper hierarchy levels first.
+        # Example: GrandChild -> Child -> Parent
+        # We want: (GrandChild -> Child) join BEFORE (Child -> Parent) join.
+        # Depth = number of mesh ancestors up the chain.
+        def _mesh_depth(obj):
+            d = 0
+            cur = getattr(obj, 'parent', None)
+            while cur and getattr(cur, 'type', None) == 'MESH':
+                d += 1
+                cur = getattr(cur, 'parent', None)
+            return d
+        parents.sort(key=_mesh_depth, reverse=True)  # deepest first
+
+        total_children_joined = 0
+
+        # Preserve original selection & active for restoration
+        try:
+            orig_selected = list(sel)
+        except Exception:
+            orig_selected = []
+        orig_active = context.view_layer.objects.active
+
+        # Local refs (minor speed-up)
+        view_layer = context.view_layer
+        objects_active = view_layer.objects
+        deselect_helper = _safe_deselect_all_objects
+        for parent in parents:
+            children = groups[parent]
             if not children:
                 continue
+            # Deselect previous selection (avoid global operator when possible)
+            try:
+                for o in orig_selected:  # reuse container size for small sets
+                    # This loop may leave other objects selected; fallback to helper
+                    o.select_set(False)
+            except Exception:
+                deselect_helper(context)
+            # Guarantee full deselect if any still selected (cheap check)
+            if any(o.select_get() for o in context.selected_objects):
+                deselect_helper(context)
 
-            # Deselect everything, then select parent and its children
-            bpy.ops.object.select_all(action='DESELECT')
+            # Select parent + children
             try:
                 parent.select_set(True)
             except Exception:
-                # If we can't select the parent, skip
                 logger.warning("Could not select parent '%s'", getattr(parent, 'name', '<unknown>'))
                 continue
-
             for c in children:
                 try:
                     c.select_set(True)
                 except Exception:
                     logger.warning("Could not select child '%s'", getattr(c, 'name', '<unknown>'))
 
-            # Make parent the active object
-            try:
-                context.view_layer.objects.active = parent
-            except Exception:
-                logger.warning("Could not make '%s' active", getattr(parent, 'name', '<unknown>'))
+            # Set parent active (only if it still exists)
+            if parent.name in bpy.data.objects:
+                try:
+                    objects_active.active = parent
+                except Exception:
+                    logger.warning("Could not set parent '%s' active", parent.name)
 
-            # Ensure object mode and join
+            # Ensure we are in OBJECT mode once (no-op if already)
             ensure_object_mode(context, 'OBJECT')
+
+            # Perform join
             try:
                 bpy.ops.object.join()
                 joined_count = len(children)
-                total_joined += joined_count
+                total_children_joined += joined_count
                 logger.info("Joined %d child(ren) into parent '%s'", joined_count, parent.name)
             except Exception as e:
-                logger.exception("Failed to join children into parent '%s': %s", getattr(parent, 'name', '<unknown>'), str(e))
-                # attempt to continue with other groups
-                continue
+                logger.exception("Failed joining into parent '%s': %s", getattr(parent, 'name', '<unknown>'), str(e))
+                continue  # move on to next parent
 
-        # Restore selection to parents that remain
-        bpy.ops.object.select_all(action='DESELECT')
-        for parent in groups.keys():
-            try:
-                if parent.name in bpy.data.objects:
-                    parent.select_set(True)
-            except Exception:
-                pass
+        # Restore a clean selection: select resulting parents (faster feedback)
+        try:
+            deselect_helper(context)
+            for p in parents:
+                if p.name in bpy.data.objects:
+                    p.select_set(True)
+            # Try to restore a sensible active object: original active if it still exists, else first parent
+            if orig_active and orig_active.name in bpy.data.objects:
+                objects_active.active = orig_active
+            else:
+                for p in parents:
+                    if p.name in bpy.data.objects:
+                        objects_active.active = p
+                        break
+        except Exception:
+            pass
 
-        if total_joined > 0:
-            self.report({'INFO'}, f"Joined {total_joined} objects into their parents")
+        if total_children_joined > 0:
+            self.report({'INFO'}, f"Joined {total_children_joined} child object(s) into {len(parents)} parent(s)")
             return {'FINISHED'}
         else:
             self.report({'INFO'}, "No meshes were joined to parents")
@@ -1014,7 +1062,6 @@ def remove_bones_by_prefix(armature_obj, prefix: str, context: bpy.types.Context
     safely switches modes and restores selection/active object when possible.
     It swallows exceptions and returns 0 on error.
     """
-    import bpy
 
     ctx = context or bpy.context
     if armature_obj is None or getattr(armature_obj, 'type', None) != 'ARMATURE':
