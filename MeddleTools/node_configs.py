@@ -342,7 +342,8 @@ NodeGroupConfigs = {
     [
         ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
         ColorHdrMapping('g_EmissiveColor', 'g_EmissiveColor', 'g_EmissiveColor_magnitude'),        
-        MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),
+        MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),        
+        MaterialKeyMapping('GetValues', 'BG_UNK2', 'GetMultiValues', True),
     ],
     "meddle water.shpk":
     [
