@@ -183,6 +183,12 @@ TextureNodeConfigs = {
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
         extension='REPEAT'
+    ),    
+    'g_SamplerSkinDiffuse_PngCachePath': TextureNodeConfig(
+        colorSpace='sRGB',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Linear',
+        extension='REPEAT'
     ),
     'g_SamplerNormal_PngCachePath': TextureNodeConfig(
         colorSpace='Non-Color',
@@ -190,7 +196,19 @@ TextureNodeConfigs = {
         interpolation='Linear',
         extension='REPEAT'
     ),
+    'g_SamplerSkinNormal_PngCachePath': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Linear',
+        extension='REPEAT'
+    ),
     'g_SamplerMask_PngCachePath': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Linear',
+        extension='REPEAT'
+    ),
+    'g_SamplerSkinMask_PngCachePath': TextureNodeConfig(
         colorSpace='Non-Color',
         alphaMode='CHANNEL_PACKED',
         interpolation='Linear',
