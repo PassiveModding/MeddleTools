@@ -1,6 +1,7 @@
 import bpy
 import logging
 from bpy.types import Operator
+from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -19,9 +20,9 @@ class DeleteEmptyVertexGroups(Operator):
 
     def execute(self, context):
         # Ensure object mode
-        ensure_object_mode(context, 'OBJECT')
+        helpers.ensure_object_mode(context, 'OBJECT')
 
-        selected_meshes = get_selected_meshes(context)
+        selected_meshes = helpers.get_selected_meshes(context)
         if not selected_meshes:
             self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
@@ -69,7 +70,3 @@ class DeleteEmptyVertexGroups(Operator):
         else:
             self.report({'INFO'}, "No empty vertex groups found on selected meshes")
         return {'FINISHED'}
-
-    def vertex_group_has_weights(self, mesh_obj, vertex_group):
-        """Return True if the vertex group has any vertex with weight > 0"""
-        return vertex_group_has_weights(mesh_obj, vertex_group)

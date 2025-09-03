@@ -1,7 +1,6 @@
 import bpy
 import logging
 from bpy.types import Operator
-import os
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)

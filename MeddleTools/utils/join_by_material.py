@@ -1,6 +1,7 @@
 import bpy
 import logging
 from bpy.types import Operator
+from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -19,9 +20,9 @@ class JoinByMaterial(Operator):
     
     def execute(self, context):
         # Work with selected mesh objects and group them by material
-        ensure_object_mode(context, 'OBJECT')
+        helpers.ensure_object_mode(context, 'OBJECT')
 
-        selected_meshes = get_selected_meshes(context)
+        selected_meshes = helpers.get_selected_meshes(context)
         if not selected_meshes:
             self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
@@ -59,7 +60,7 @@ class JoinByMaterial(Operator):
             try:
                 bpy.ops.object.select_all(action='DESELECT')
             except Exception:
-                _safe_deselect_all_objects(context)
+                helpers._safe_deselect_all_objects(context)
 
             for o in objs:
                 try:
@@ -75,7 +76,7 @@ class JoinByMaterial(Operator):
 
             active_obj = context.view_layer.objects.active
 
-            # --- NEW: stabilize children so they do not shift after join ---
+            # stabilize children so they do not shift after join
             # Re-parent children of the soon-to-be removed objects (other than active)
             # to the active object while preserving world transforms.
             for src in objs:
@@ -101,10 +102,9 @@ class JoinByMaterial(Operator):
                             logger.debug("Failed to reparent child '%s' before join", getattr(child, 'name', '<unknown>'))
                 except Exception:
                     pass
-            # --- END NEW ---
 
             # Ensure object mode and attempt join
-            ensure_object_mode(context, 'OBJECT')
+            helpers.ensure_object_mode(context, 'OBJECT')
             try:
                 bpy.ops.object.join()
                 joined_count = len(objs)
@@ -118,7 +118,7 @@ class JoinByMaterial(Operator):
         try:
             bpy.ops.object.select_all(action='DESELECT')
         except Exception:
-            _safe_deselect_all_objects(context)
+            helpers._safe_deselect_all_objects(context)
         if context.view_layer.objects.active and context.view_layer.objects.active.name in bpy.data.objects:
             try:
                 context.view_layer.objects.active.select_set(True)

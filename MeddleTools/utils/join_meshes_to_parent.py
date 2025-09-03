@@ -2,6 +2,7 @@ import bpy
 import logging
 from bpy.types import Operator
 from collections import defaultdict
+from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class JoinMeshesToParent(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        ensure_object_mode(context, 'OBJECT')
+        helpers.ensure_object_mode(context, 'OBJECT')
 
         sel = context.selected_objects
         if not sel:
@@ -75,7 +76,7 @@ class JoinMeshesToParent(Operator):
 
         result_child_objects = []  # For non-mesh parent groups (resulting merged meshes)
 
-        deselect_helper = _safe_deselect_all_objects
+        deselect_helper = helpers._safe_deselect_all_objects
         view_layer = context.view_layer
 
         for parent in parents:
@@ -110,7 +111,7 @@ class JoinMeshesToParent(Operator):
                     except Exception:
                         pass
 
-                ensure_object_mode(context, 'OBJECT')
+                helpers.ensure_object_mode(context, 'OBJECT')
                 try:
                     bpy.ops.object.join()
                     joined_count = len(children)
@@ -148,7 +149,7 @@ class JoinMeshesToParent(Operator):
                     except Exception:
                         pass
 
-                ensure_object_mode(context, 'OBJECT')
+                helpers.ensure_object_mode(context, 'OBJECT')
 
                 # Ensure base retains the original parent (others will vanish after join)
                 original_parent = getattr(base, 'parent', None)

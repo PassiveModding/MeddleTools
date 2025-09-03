@@ -1,6 +1,7 @@
 import bpy
 import logging
 from bpy.types import Operator
+from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class CleanBoneHierarchy(Operator):
             prev_active = context.view_layer.objects.active
             try:
                 context.view_layer.objects.active = arm_obj
-                ensure_object_mode(context, 'OBJECT')
+                helpers.ensure_object_mode(context, 'OBJECT')
                 bpy.ops.object.mode_set(mode='EDIT')
             except Exception:
                 # If we can't enter edit mode, skip this armature

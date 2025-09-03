@@ -2,6 +2,7 @@ import bpy
 import logging
 from bpy.types import Operator
 import os
+from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ class ImportAnimationGLTF(Operator):
         
         try:
             # Clear selection before import (safe)
-            _safe_deselect_all_objects(context)
+            helpers._safe_deselect_all_objects(context)
             
             # Import using same logic as gltf_import.py - check import mode first
             logger.info("Importing animation from GLTF: %s", gltf_file_path)
@@ -78,7 +79,7 @@ class ImportAnimationGLTF(Operator):
             if not imported_armatures:
                 self.report({'WARNING'}, "No armatures found in the imported GLTF file")
                 # Clean up imported objects
-                cleanup_imported_objects(imported_objects)
+                helpers.cleanup_imported_objects(imported_objects)
                 return {'CANCELLED'}
             
             # Hide the imported stuff since we only need the animation
@@ -190,10 +191,10 @@ class ImportAnimationGLTF(Operator):
                     break
             
             # Clean up the imported objects (we only needed the animation data)
-            cleanup_imported_objects(imported_objects)
+            helpers.cleanup_imported_objects(imported_objects)
             
             # Restore previous selection; we'll activate the target armature if import succeeded
-            _safe_deselect_all_objects(context)
+            helpers._safe_deselect_all_objects(context)
             for obj in original_selected:
                 if obj.name in bpy.data.objects:  # Make sure object still exists
                     obj.select_set(True)
@@ -211,7 +212,7 @@ class ImportAnimationGLTF(Operator):
                 
         except Exception as e:
             # Restore selection even if there's an error
-            _safe_deselect_all_objects(context)
+            helpers._safe_deselect_all_objects(context)
             for obj in original_selected:
                 if obj.name in bpy.data.objects:
                     obj.select_set(True)
