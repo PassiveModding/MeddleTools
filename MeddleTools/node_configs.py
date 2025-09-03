@@ -297,6 +297,8 @@ TextureNodeConfigs = {
 NodeGroupConfigs = {
     'meddle skin.shpk': 
     [
+        ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
+        ColorMapping('g_EmissiveColor', 'g_EmissiveColor'),
         ColorMapping('SkinColor', 'Skin Color'),
         ColorMapping('LipColor', 'Lip Color'),
         FloatMapping('LipColor', 'Lip Color Strength', 3),
