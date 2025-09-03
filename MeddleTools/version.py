@@ -1,11 +1,9 @@
 import bpy
 import requests
-import glob
 import os
 import tempfile
 import logging
 import addon_utils
-from . import setup
 
 logging.basicConfig()
 logger = logging.getLogger('MeddleTools.version')
@@ -176,3 +174,7 @@ class MeddleToolsInstallUpdate(bpy.types.Operator):
             return {'FINISHED'}
         finally:
             context.window.cursor_set('DEFAULT')
+
+classes = [
+    MeddleToolsInstallUpdate,
+]
