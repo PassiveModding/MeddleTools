@@ -150,6 +150,16 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row = col.row()
         row.operator(utils.ImportAnimationGLTF.bl_idname, text='Import Animation GLTF', icon='IMPORT')
         
+        # Render section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Set Cycles Defaults", icon='RENDER_STILL')
+        row = col.row()
+        row.operator(utils.SetCyclesDefaults.bl_idname, text='Set Defaults', icon='RENDER_STILL')
+        
+        row = col.row()
+        row.operator(utils.SetCameraCulling.bl_idname, text='Set Camera Culling', icon='CAMERA_DATA')
+
         # Scene Cleanup section
         box = layout.box()
         col = box.column()

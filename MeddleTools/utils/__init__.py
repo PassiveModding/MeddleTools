@@ -10,6 +10,7 @@ from .delete_empty_vertex_groups import DeleteEmptyVertexGroups
 from .join_meshes_to_parent import JoinMeshesToParent
 from .delete_unused_uv_maps import DeleteUnusedUvMaps
 from .remove_bones_by_prefix import RemoveBonesByPrefix
+from .set_render_defaults import (SetCyclesDefaults, SetCameraCulling)
 
 
 classes = [
@@ -25,4 +26,6 @@ classes = [
 	JoinMeshesToParent,
 	DeleteUnusedUvMaps,
 	RemoveBonesByPrefix,
+	SetCyclesDefaults,
+	SetCameraCulling
 ]
