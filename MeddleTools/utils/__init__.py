@@ -1,3 +1,4 @@
+from .instance_meshes import InstanceMeshes
 from .find_properties import FindProperties
 from .boost_lights import BoostLights
 from .join_by_material import JoinByMaterial
@@ -27,5 +28,6 @@ classes = [
 	DeleteUnusedUvMaps,
 	RemoveBonesByPrefix,
 	SetCyclesDefaults,
-	SetCameraCulling
+	SetCameraCulling,
+	InstanceMeshes
 ]

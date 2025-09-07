@@ -135,6 +135,8 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row.prop(props, 'merge_distance', text='Merge Distance')
         row = col.row()
         row.operator(utils.JoinByDistance.bl_idname, text='Join Vertices by Distance', icon='PARTICLE_DATA')
+        row = col.row()
+        row.operator(utils.InstanceMeshes.bl_idname, text='Instance Identical Meshes', icon='AUTOMERGE_ON')
         
         # Material Operations section
         box = layout.box()
@@ -167,11 +169,15 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row = col.row()
         row.operator(utils.CleanBoneHierarchy.bl_idname, text='Clean Bone Hierarchy', icon='ARMATURE_DATA')
         row = col.row()
-        row.operator(utils.RemoveBonesByPrefix.bl_idname, text='Remove Bones by Prefix', icon='ARMATURE_DATA')
+        row.operator(utils.FixParenting.bl_idname, text='Fix Parenting', icon='ARMATURE_DATA')
+        # row = col.row()
+        # row.operator(utils.RemoveBonesByPrefix.bl_idname, text='Remove Bones by Prefix', icon='ARMATURE_DATA')
+        row = col.row()
+        row.operator(utils.ReplaceSuffixes.bl_idname, text='Replace Suffixes', icon='FILE_REFRESH')
         row = col.row()
         row.operator(utils.DeleteEmptyVertexGroups.bl_idname, text='Delete Empty Vertex Groups', icon='GROUP_VERTEX')
-        row = col.row()
-        row.operator(utils.DeleteUnusedUvMaps.bl_idname, text='Delete Unused UV Maps', icon='MESH_UVSPHERE')
+        # row = col.row()
+        # row.operator(utils.DeleteUnusedUvMaps.bl_idname, text='Delete Unused UV Maps', icon='MESH_UVSPHERE')
         row = col.row()
         row.operator(utils.PurgeUnused.bl_idname, text='Purge Unused Data')    
 

@@ -3,7 +3,7 @@ import idprop.types
 import os.path as path
 import re
 import logging
-from . import version
+from . import version, blend_import
 
 logger = logging.getLogger(__name__)
 try:
@@ -324,7 +324,7 @@ NodeGroupConfigs = {
     ],
     'meddle charactertattoo.shpk':
     [        
-        ColorMapping('OptionColor', 'OptionColor'),
+        ColorMapping('OptionColor', 'OptionColor')
     ],
     'meddle iris.shpk':
     [        
@@ -435,7 +435,7 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
         
         resource_shpk = shader_package_mappings.get(shader_package, shader_package)
         
-        resource_name = f'meddle {resource_shpk} {version.current_version}'
+        resource_name = blend_import.get_resource_name(resource_shpk)
         # replace node tree with copy of the one from the resource
         template_material = bpy.data.materials.get(resource_name)
         if not template_material:
