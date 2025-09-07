@@ -90,6 +90,12 @@ class ModelImport(bpy.types.Operator):
     files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
+    
+    # Class variables for async import state
+    _import_queue = []
+    _current_import_index = 0
+    _timer = None
+    _context = None
 
     def invoke(self, context, event):
         if context is None:
@@ -102,47 +108,114 @@ class ModelImport(bpy.types.Operator):
         if context is None:
             return {'CANCELLED'}
         
-        bpy.context.window.cursor_set('WAIT')
+        # Prepare the import queue
+        self._import_queue = []
+        for file in self.files:
+            filepath = path.join(self.directory, file.name)
+            self._import_queue.append(filepath)
+        
+        self._current_import_index = 0
+        self._context = context
+        
+        if not self._import_queue:
+            return {'CANCELLED'}
+        
+        # Import shaders once at the beginning
         try:
             blend_import.import_shaders()
+        except Exception as e:
+            print(f"Error importing shaders: {e}")
+            return {'CANCELLED'}
+        
+        # Start the async import process
+        print(f"Starting async import of {len(self._import_queue)} files...")
+        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        
+        return {'RUNNING_MODAL'}
+    
+    def modal(self, context, event):
+        if event.type == 'TIMER':
+            # Process one file from the queue
+            if self._current_import_index < len(self._import_queue):
+                filepath = self._import_queue[self._current_import_index]
+                
+                try:
+                    self._import_single_file(filepath, context)
+                    print(f"Imported file {self._current_import_index + 1}/{len(self._import_queue)}: {path.basename(filepath)}")
+                except Exception as e:
+                    print(f"Error importing {filepath}: {e}")
+                
+                self._current_import_index += 1
+                
+                # Continue processing
+                return {'PASS_THROUGH'}
+            else:
+                # All files processed, cleanup and finish
+                self._cleanup(context)
+                print("Async import completed!")
+                return {'FINISHED'}
+        
+        return {'PASS_THROUGH'}
+    
+    def cancel(self, context):
+        self._cleanup(context)
+        print("Async import cancelled!")
+        return {'CANCELLED'}
+    
+    def _cleanup(self, context):
+        """Clean up timer and reset state"""
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+        self._import_queue = []
+        self._current_import_index = 0
+        self._context = None
+    
+    def _import_single_file(self, filepath, context):
+        """Import a single GLTF file and process it"""
+        print(f"GLTF Path: {filepath}")
+        
+        cache_dir = path.join(path.dirname(filepath), "cache")
+        
+        # Store current selection before import
+        original_selection = list(context.selected_objects)
+        
+        # Import the GLTF file
+        bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
+        
+        # Get newly imported objects
+        current_selected_copy = list(context.selected_objects)
+        newly_imported = [obj for obj in current_selected_copy if obj not in original_selection]
+        
+        # Process imported meshes
+        imported_meshes = [obj for obj in newly_imported if obj.type == 'MESH']
+        for mesh in imported_meshes:
+            if mesh is None:
+                continue
             
-            def import_gltf(filepath):            
-                print(f"GLTF Path: {filepath}")
-                
-                cache_dir = path.join(path.dirname(filepath), "cache")
-                bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
-                
-                current_selected_copy = list(context.selected_objects)
-                
-                imported_meshes = [obp for obp in current_selected_copy if obp.type == 'MESH']
-
-                for mesh in imported_meshes:
-                    if mesh is None:
-                        continue
-                    
-                    node_configs.map_mesh(mesh, cache_dir)
-                    
-                imported_lights = [obp for obp in current_selected_copy if obp.name.startswith("Light")]
-                
-                for light in imported_lights:
-                    if light is None:
-                        continue
-                    
-                    try:
-                        lighting.setupLight(light)
-                    except Exception as e:
-                        print(e)
-                        
-                for obj in current_selected_copy:                    
-                    setCollection(obj, context)
-                            
-            for file in self.files:
-                filepath = path.join(self.directory, file.name)
-                import_gltf(filepath)
-                            
-            return {'FINISHED'}
-        finally:
-            bpy.context.window.cursor_set('DEFAULT')
+            try:
+                node_configs.map_mesh(mesh, cache_dir)
+            except Exception as e:
+                print(f"Error mapping mesh {mesh.name}: {e}")
+        
+        # Process imported lights
+        imported_lights = [obj for obj in newly_imported if obj.name.startswith("Light")]
+        for light in imported_lights:
+            if light is None:
+                continue
+            
+            try:
+                lighting.setupLight(light)
+            except Exception as e:
+                print(f"Error setting up light {light.name}: {e}")
+        
+        # Set collections for all imported objects
+        for obj in newly_imported:
+            try:
+                setCollection(obj, context)
+            except Exception as e:
+                print(f"Error setting collection for {obj.name}: {e}")
             
 class ApplyToSelected(bpy.types.Operator):
     bl_idname = "meddle.apply_to_selected"
