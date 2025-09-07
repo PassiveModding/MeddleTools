@@ -96,6 +96,7 @@ class ModelImport(bpy.types.Operator):
     _current_import_index = 0
     _timer = None
     _context = None
+    _progress_started = False
 
     def invoke(self, context, event):
         if context is None:
@@ -128,10 +129,23 @@ class ModelImport(bpy.types.Operator):
             return {'CANCELLED'}
         
         # Start the async import process
-        print(f"Starting async import of {len(self._import_queue)} files...")
+        print(f"Starting import of {len(self._import_queue)} files...")
+        # Begin a progress indicator in the UI so the user can see activity
+        try:
+            context.window_manager.progress_begin(len(self._import_queue))
+            self._progress_started = True
+        except Exception:
+            # Some Blender contexts may not support progress APIs in all areas; fall back to prints
+            self._progress_started = False
+
         self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
         context.window_manager.modal_handler_add(self)
-        
+        # Report to the user in the info area
+        try:
+            self.report({'INFO'}, f"Starting import of {len(self._import_queue)} files...")
+        except Exception:
+            pass
+
         return {'RUNNING_MODAL'}
     
     def modal(self, context, event):
@@ -143,6 +157,27 @@ class ModelImport(bpy.types.Operator):
                 try:
                     self._import_single_file(filepath, context)
                     print(f"Imported file {self._current_import_index + 1}/{len(self._import_queue)}: {path.basename(filepath)}")
+                    # update the UI progress and operator report
+                    try:
+                        if self._progress_started:
+                            context.window_manager.progress_update(self._current_import_index + 1)
+                            # Force UI redraw so progress shows between imports
+                            try:
+                                for area in context.window.screen.areas:
+                                    area.tag_redraw()
+                            except Exception:
+                                # Fallback to redraw operator if available
+                                try:
+                                    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+
+                    try:
+                        self.report({'INFO'}, f"Imported {path.basename(filepath)} ({self._current_import_index + 1}/{len(self._import_queue)})")
+                    except Exception:
+                        pass
                 except Exception as e:
                     print(f"Error importing {filepath}: {e}")
                 
@@ -153,7 +188,11 @@ class ModelImport(bpy.types.Operator):
             else:
                 # All files processed, cleanup and finish
                 self._cleanup(context)
-                print("Async import completed!")
+                print("Import completed!")
+                try:
+                    self.report({'INFO'}, "Import completed")
+                except Exception:
+                    pass
                 return {'FINISHED'}
         
         return {'PASS_THROUGH'}
@@ -161,6 +200,10 @@ class ModelImport(bpy.types.Operator):
     def cancel(self, context):
         self._cleanup(context)
         print("Async import cancelled!")
+        try:
+            self.report({'WARNING'}, "Async import cancelled")
+        except Exception:
+            pass
         return {'CANCELLED'}
     
     def _cleanup(self, context):
@@ -168,6 +211,14 @@ class ModelImport(bpy.types.Operator):
         if self._timer:
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
+        # End progress indicator if started
+        try:
+            if self._progress_started:
+                context.window_manager.progress_end()
+        except Exception:
+            pass
+
+        self._progress_started = False
         self._import_queue = []
         self._current_import_index = 0
         self._context = None
