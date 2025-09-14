@@ -12,6 +12,7 @@ from .join_meshes_to_parent import JoinMeshesToParent
 from .delete_unused_uv_maps import DeleteUnusedUvMaps
 from .remove_bones_by_prefix import RemoveBonesByPrefix
 from .set_render_defaults import (SetCyclesDefaults, SetCameraCulling)
+from .reparent_to_empty import ReparentToEmpty
 
 
 classes = [
@@ -29,5 +30,6 @@ classes = [
 	RemoveBonesByPrefix,
 	SetCyclesDefaults,
 	SetCameraCulling,
-	InstanceMeshes
+	InstanceMeshes,
+	ReparentToEmpty
 ]

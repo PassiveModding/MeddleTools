@@ -18,6 +18,20 @@ class DeleteEmptyVertexGroups(Operator):
     bl_description = "Remove vertex groups from selected mesh objects that have no vertices assigned (weight == 0)"
     bl_options = {'REGISTER', 'UNDO'}
 
+    @classmethod
+    def poll(cls, context):
+        """Enable only when at least one Mesh is selected.
+
+        This greys out the button in the UI unless any selected object
+        is a Mesh. Using selected_objects (not only active_object) makes
+        it work when multiple meshes are selected.
+        """
+        try:
+            selected = getattr(context, 'selected_objects', []) or []
+            return any(obj and getattr(obj, 'type', None) == 'MESH' for obj in selected)
+        except Exception:
+            return False
+
     def execute(self, context):
         # Ensure object mode
         helpers.ensure_object_mode(context, 'OBJECT')

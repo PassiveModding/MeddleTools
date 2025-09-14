@@ -309,6 +309,8 @@ NodeGroupConfigs = {
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFace', 'IS_FACE'),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBodyJJM', 'IS_HROTHGAR'),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFaceEmissive', 'IS_EMISSIVE'),
+        # F52CCF05 = A7D2FF60 (face)
+        # F52CCF05 = DFE74BAC (body/hands/etc)
     ],
     'meddle decaluv': 
     [
@@ -317,6 +319,7 @@ NodeGroupConfigs = {
     ],
     'meddle hair.shpk': 
     [
+        ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
         ColorMapping('MainColor', 'Hair Color'),
         ColorMapping('MeshColor', 'Highlights Color'),
         MaterialKeyMapping('GetSubColor', 'GetSubColorFace', 'IS_FACE', True),

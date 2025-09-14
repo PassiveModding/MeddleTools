@@ -19,6 +19,18 @@ class ImportAnimationGLTF(Operator):
     bl_description = "Import animation from a GLTF file to the selected armature"
     bl_options = {'REGISTER', 'UNDO'}
     
+    @classmethod
+    def poll(cls, context):
+        """Enable only when an Armature is selected (active or among selection)."""
+        try:
+            ao = getattr(context, 'active_object', None)
+            if ao and getattr(ao, 'type', None) == 'ARMATURE':
+                return True
+            selected = getattr(context, 'selected_objects', []) or []
+            return any(obj and getattr(obj, 'type', None) == 'ARMATURE' for obj in selected)
+        except Exception:
+            return False
+    
     # File browser properties
     files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
