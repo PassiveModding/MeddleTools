@@ -1,8 +1,8 @@
 import bpy
 from . import blend_import
-from . import shader_fix
 from . import gltf_import
 from . import version
+from . import utils
 
 repo_url = "https://github.com/PassiveModding/MeddleTools"
 repo_issues_url = "https://github.com/PassiveModding/MeddleTools/issues"
@@ -17,7 +17,6 @@ class MeddleImportPanel(bpy.types.Panel):
     bl_label = "Meddle Import"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_context = "objectmode"
     bl_category = "Meddle Tools"
     
     blender_import: bpy.props.BoolProperty(name="Blender Import", default=True)
@@ -29,13 +28,12 @@ class MeddleImportPanel(bpy.types.Panel):
         
         layout = self.layout
              
-        layout.prop(context.scene.model_import_settings, 'gltfImportMode', text='Import Mode', expand=True)    
-        layout.prop(context.scene.model_import_settings, 'deduplicateMaterials', text='Deduplicate Materials') 
+        # layout.prop(context.scene.meddle_settings, 'gltf_bone_dir', text='Import Mode', expand=True)    
         row = layout.row()
         row.operator(gltf_import.ModelImport.bl_idname, text='Import .gltf/.glb', icon='IMPORT')
         row.operator(ModelImportHelpHover.bl_idname, text='', icon='QUESTION')
         
-        if context.scene.model_import_settings.displayImportHelp:
+        if context.scene.meddle_settings.display_import_help:
             self.drawModelImportHelp(layout)
 
     def drawModelImportHelp(self, layout):
@@ -43,7 +41,7 @@ class MeddleImportPanel(bpy.types.Panel):
         col = box.column()
         col.label(text="Import and automatically apply shaders")
         col.label(text="Navigate to your Meddle export folder")
-        col.label(text="and select the .gltf or .glb file")
+        col.label(text="and select the .gltf or .glb file(s)")
             
 class ModelImportHelpHover(bpy.types.Operator):
     bl_idname = "meddle.model_import_help_hover"
@@ -52,7 +50,7 @@ class ModelImportHelpHover(bpy.types.Operator):
     
     def execute(self, context):
         # toggle the display of the import help
-        context.scene.model_import_settings.displayImportHelp = not context.scene.model_import_settings.displayImportHelp
+        context.scene.meddle_settings.display_import_help = not context.scene.meddle_settings.display_import_help
         return {'FINISHED'}    
 
 class MeddleShaderImportPanel(bpy.types.Panel):
@@ -60,12 +58,10 @@ class MeddleShaderImportPanel(bpy.types.Panel):
     bl_label = "Meddle Shaders"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_context = "objectmode"
     bl_category = "Meddle Tools"
     bl_options = {'DEFAULT_CLOSED'}
     
-    def draw(self, context):
-        
+    def draw(self, context):        
         layout = self.layout
         
         # note that this section is mostly for testing
@@ -84,43 +80,110 @@ class MeddleShaderImportPanel(bpy.types.Panel):
         col = section.column()
         
         row = col.row()
-        row.operator(shader_fix.ShaderFixSelected.bl_idname, text='Apply Shaders to Selected Objects')
-        
-        row = col.row()
-        row.operator(shader_fix.ShaderFixActive.bl_idname, text='Apply Shaders to Current Material')
-        
-        row = col.row()
         row.label(text="Navigate to the 'cache' folder")
         row = col.row()
         row.label(text="in the same folder as your model")
+        
+        row = layout.row()
+        row.operator(gltf_import.ApplyToSelected.bl_idname, text='Apply Shaders to Selected', icon='SHADERFX')
         
         row = layout.row()
         row.operator(blend_import.ImportShaders.bl_idname, text='Import Shaders')
         
         row = layout.row()
         row.operator(blend_import.ReplaceShaders.bl_idname, text='Replace Shaders')
+
+class MeddleUtilsPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_MeddleUtilsPanel"
+    bl_label = "Meddle Utilities"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Meddle Tools"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.meddle_settings
         
+        # Find Properties section
+        # box = layout.box()
+        # col = box.column()
+        # col.label(text="Find Properties", icon='VIEWZOOM')
+        # row = col.row()
+        # row.prop(props, 'search_property', text='Property')
+        # row = col.row()
+        # row.operator(utils.FindProperties.bl_idname, text='Search Materials')
+        
+        # Light Boost section
         box = layout.box()
         col = box.column()
+        col.label(text="Light Boost", icon='LIGHT')
+        row = col.row()
+        row.prop(props, 'light_boost_factor', text='Boost Factor')
+        row = col.row()
+        row.operator(utils.BoostLights.bl_idname, text='Boost All Lights')
+        
+        # Mesh Operations section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Mesh Operations", icon='MESH_DATA')
+        # row = col.row()
+        # row.operator(utils.JoinByMaterial.bl_idname, text='Join Meshes by Material', icon='MESH_CUBE')
+        # row = col.row()
+        # row.operator(utils.JoinMeshesToParent.bl_idname, text='Join Meshes to Parent', icon='GROUP')
+        # row = col.row()
+        # row.operator(utils.ReparentToEmpty.bl_idname, text='Reparent to Empty', icon='OUTLINER_OB_EMPTY')
+        row = col.row()
+        row.prop(props, 'merge_distance', text='Merge Distance')
+        row = col.row()
+        row.operator(utils.JoinByDistance.bl_idname, text='Join Vertices by Distance', icon='PARTICLE_DATA')
+        row = col.row()
+        row.operator(utils.InstanceMeshes.bl_idname, text='Instance Identical Meshes', icon='AUTOMERGE_ON')
+        
+        # Material Operations section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Material Operations", icon='MATERIAL')
+        row = col.row()
+        row.operator(utils.AddVoronoiTexture.bl_idname, text='Apply Voronoi to Selected', icon='TEXTURE')
+
+        # Animation & Rigging section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Animation & Rigging", icon='ARMATURE_DATA')
+        row = col.row()
+        row.operator(utils.ImportAnimationGLTF.bl_idname, text='Import Animation GLTF', icon='IMPORT')
+        
+        # Render section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Set Cycles Defaults", icon='RENDER_STILL')
+        row = col.row()
+        row.operator(utils.SetCyclesDefaults.bl_idname, text='Set Defaults', icon='RENDER_STILL')
         
         row = col.row()
-        row.label(text="Imports the Meddle shader node groups")
-        
-        row = layout.row()
-        row.operator(shader_fix.LightingBoost.bl_idname, text='Reparse Lights')
-        
-        row = layout.row()
-        row.operator(shader_fix.MeddleClear.bl_idname, text='Clear Applied Status')
-        
-        row = layout.row()
-        row.operator(shader_fix.AddVoronoiTexture.bl_idname, text='Apply Voronoi to selected terrains')
+        row.operator(utils.SetCameraCulling.bl_idname, text='Set Camera Culling', icon='CAMERA_DATA')
+
+        # Scene Cleanup section
+        box = layout.box()
+        col = box.column()
+        col.label(text="Scene Cleanup", icon='TRASH')
+        row = col.row()
+        row.operator(utils.CleanBoneHierarchy.bl_idname, text='Clean Bone Hierarchy', icon='ARMATURE_DATA')
+        # row = col.row()
+        # row.operator(utils.RemoveBonesByPrefix.bl_idname, text='Remove Bones by Prefix', icon='ARMATURE_DATA')
+        row = col.row()
+        row.operator(utils.DeleteEmptyVertexGroups.bl_idname, text='Delete Empty Vertex Groups', icon='GROUP_VERTEX')
+        # row = col.row()
+        # row.operator(utils.DeleteUnusedUvMaps.bl_idname, text='Delete Unused UV Maps', icon='MESH_UVSPHERE')
+        row = col.row()
+        row.operator(utils.PurgeUnused.bl_idname, text='Purge Unused Data')    
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
     bl_label = "Credits & Version"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_context = "objectmode"
     bl_category = "Meddle Tools"
     
     def draw(self, context):
@@ -158,7 +221,6 @@ class MeddleHeaderPanel(bpy.types.Panel):
     bl_label = ""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_context = "objectmode"
     bl_category = "Meddle Tools" 
     
     def draw_header(self, context):
@@ -189,3 +251,13 @@ class MeddleHeaderPanel(bpy.types.Panel):
                 row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
                 row = col.row()
                 row.label(text=f"{version.latest_version_name}")
+                
+                
+classes = [
+    MeddleHeaderPanel,
+    MeddleImportPanel,
+    MeddleUtilsPanel,
+    MeddleShaderImportPanel,
+    MeddleCreditPanel,
+    ModelImportHelpHover
+]

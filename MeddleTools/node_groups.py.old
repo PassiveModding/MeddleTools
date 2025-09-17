@@ -28,7 +28,7 @@ class NodeGroup:
         self.mapping_definitions = mapping_definitions
         
 class PngMapping:
-    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False, extension: str = 'REPEAT'):
+    def __init__(self, property_name: str, color_dest: str | None, alpha_dest: str | None, color_space: str, interpolation: str = 'Linear', optional: bool = False, extension: str = 'REPEAT', alpha_mode: str = 'CHANNEL_PACKED'):
         self.property_name = property_name
         self.color_dest = color_dest
         self.alpha_dest = alpha_dest
@@ -36,6 +36,7 @@ class PngMapping:
         self.interpolation = interpolation
         self.optional = optional
         self.extension = extension
+        self.alpha_mode = alpha_mode
         
     def __repr__(self):
         return f"PngMapping({self.property_name}, {self.color_dest}, {self.alpha_dest}, {self.color_space})"
@@ -81,9 +82,10 @@ class PngMapping:
         texture.label = self.property_name
         texture.location = (-500, node_height)
         texture.image.colorspace_settings.name = self.color_space
+        texture.image.alpha_mode = self.alpha_mode
         texture.interpolation = self.interpolation
         texture.extension = self.extension
-        
+
         if self.alpha_dest is not None:
             #material.links.new(texture.outputs['Alpha'], groupNode.inputs[self.alpha_dest])
             linkInputSafe(material, texture.outputs['Alpha'], groupNode, self.alpha_dest)
@@ -949,8 +951,8 @@ def handleSkin(mat: bpy.types.Material, mesh, directory):
     
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     if decalUv_node is not None:
         decalUv_node.location = (east - 600, 300)
     if uvMapNode is not None:
@@ -1010,8 +1012,8 @@ def handleHair(mat: bpy.types.Material, mesh, directory):
 
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleIris(mat: bpy.types.Material, mesh, directory):
@@ -1061,55 +1063,55 @@ def handleIris(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
-def handleCharacter(mat: bpy.types.Material, mesh, directory):
-    group_name = "meddle character.shpk"
-    base_mappings = [
-        ColorSetMapping2(),
-        PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
-        PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
-        PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
-    ]
+# def handleCharacter(mat: bpy.types.Material, mesh, directory):
+#     group_name = "meddle character.shpk"
+#     base_mappings = [
+#         ColorSetMapping2(),
+#         PngMapping('g_SamplerDiffuse_PngCachePath', 'g_SamplerDiffuse', 'g_SamplerDiffuse_alpha', 'sRGB'),
+#         PngMapping('g_SamplerNormal_PngCachePath', 'g_SamplerNormal', None, 'Non-Color'),
+#         PngMapping('g_SamplerMask_PngCachePath', 'g_SamplerMask', None, 'Non-Color'),
+#     ]
     
-    node_tree = mat.node_tree
-    if node_tree is None:
-        print(f"Material {mat.name} has no node tree")
-        return {'CANCELLED'}
+#     node_tree = mat.node_tree
+#     if node_tree is None:
+#         print(f"Material {mat.name} has no node tree")
+#         return {'CANCELLED'}
     
-    if group_name not in bpy.data.node_groups:
-        print(f"Node group {group_name} not found")
-        return {'CANCELLED'}
+#     if group_name not in bpy.data.node_groups:
+#         print(f"Node group {group_name} not found")
+#         return {'CANCELLED'}
     
-    mappings = []
-    if 'GetValues' in mat:
-        if mat["GetValues"] == 'GetValuesCompatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+#     mappings = []
+#     if 'GetValues' in mat:
+#         if mat["GetValues"] == 'GetValuesCompatibility':
+#             mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
             
-    if 'GetValuesTextureType' in mat:
-        if mat["GetValuesTextureType"] == 'Compatibility':
-            mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
+#     if 'GetValuesTextureType' in mat:
+#         if mat["GetValuesTextureType"] == 'Compatibility':
+#             mappings = [FloatValueMapping(1.0, 'IS_COMPATIBILITY')]
             
-    clearMaterialNodes(node_tree)
+#     clearMaterialNodes(node_tree)
     
-    material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
+#     material_output: bpy.types.ShaderNodeOutputMaterial = node_tree.nodes.new('ShaderNodeOutputMaterial')     # type: ignore
     
-    group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
+#     group_node: bpy.types.ShaderNodeGroup = node_tree.nodes.new('ShaderNodeGroup')      # type: ignore
     
-    group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
-    group_node.width = 300
+#     group_node.node_tree = bpy.data.node_groups[group_name]     # type: ignore
+#     group_node.width = 300
 
-    bsdf_node = createBsdfNode(node_tree)
-    mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
-    mapGroupOutputs(mat, bsdf_node, group_node)
-    mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
-    east = getEastModePosition(node_tree)
-    group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
-    return {'FINISHED'}
+#     bsdf_node = createBsdfNode(node_tree)
+#     mapBsdfOutput(mat, material_output, bsdf_node, 'Surface')
+#     mapGroupOutputs(mat, bsdf_node, group_node)
+#     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
+#     east = getEastModePosition(node_tree)
+#     group_node.location = (east + 300, 300)
+#     bsdf_node.location = (east + 600, 300)
+#     material_output.location = (east + 1000, 300)
+#     return {'FINISHED'}
 
 def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_package: str):
     group_name = "meddle character.shpk"
@@ -1274,7 +1276,6 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     sheenAptitudeRampB = setupRamp(-5700, node_tree, 'SheenAptitudeRampB')
     anisotropyRampA = setupRamp(-6000, node_tree, 'AnisotropyRampA')
     anisotropyRampB = setupRamp(-6300, node_tree, 'AnisotropyRampB')
-    
     mapRamp(colorRampA, colorRampB, rows, 'Diffuse', 'XYZ')
     mapRamp(specularRampA, specularRampB, rows, 'Specular', 'XYZ')
     mapRamp(emissionRampA, emissionRampB, rows, 'Emissive', 'XYZ')
@@ -1340,11 +1341,10 @@ def handleCharacterSimple(mat: bpy.types.Material, mesh, directory, shader_packa
     east = getEastModePosition(node_tree)
     pair_node.location = (east + 300, 300)
     group_node.location = (east + 700, 300)
-    bsdf_node.location = (east + 1000, 300)
-    material_output.location = (east + 1300, 300)
+    bsdf_node.location = (east + 1100, 300)
+    material_output.location = (east + 1500, 300)
     
     return {'FINISHED'}
-    
     
 
 class FloatHdrMapping:
@@ -1488,8 +1488,8 @@ def handleCharacterTattoo(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
@@ -1524,8 +1524,8 @@ def handleCharacterOcclusion(mat: bpy.types.Material, mesh, directory):
     mapMappings(mat, mesh, group_node, directory, base_mappings + mappings)
     east = getEastModePosition(node_tree)
     group_node.location = (east + 300, 300)
-    bsdf_node.location = (east + 600, 300)
-    material_output.location = (east + 1000, 300)
+    bsdf_node.location = (east + 700, 300)
+    material_output.location = (east + 1100, 300)
     return {'FINISHED'}
 
 def handleBgProp(mat: bpy.types.Material, mesh, directory):
