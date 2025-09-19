@@ -1,3 +1,4 @@
+import os
 import bpy
 import idprop.types
 import os.path as path
@@ -661,6 +662,16 @@ def setBackfaceCulling(mesh: bpy.types.Mesh, material: bpy.types.Material):
     else:
         material.use_backface_culling = True
 
+class ArrayDefinition:
+    def __init__(self, cache_path: str, file_name_pattern: str):
+        self.cache_path = cache_path
+        self.file_name_pattern = file_name_pattern
+
+png_custom_vertical_array_definitions = {
+    'chara_tile_norm_array': ArrayDefinition('array_textures/chara/common/texture/tile_norm_array', r'tile_norm_array\..+\.vertical\.png$'),
+    'chara_tile_orb_array': ArrayDefinition('array_textures/chara/common/texture/tile_orb_array', r'tile_orb_array\..+\.vertical\.png$'),
+}
+
 def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
     texture_nodes = [node for node in node_tree.nodes if node.type == 'TEX_IMAGE']
@@ -668,15 +679,33 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
     # based on node label, lookup property on material
     for node in texture_nodes:
         label = node.label
-        if label not in material:
+        full_path = None
+        if label in png_custom_vertical_array_definitions:
+            # check cache_directory.array_textures/
+            array_def = png_custom_vertical_array_definitions[label]
+            array_cache_path = path.join(cache_directory, array_def.cache_path)
+            if not path.exists(array_cache_path):
+                logger.debug("Array cache path %s does not exist.", array_cache_path)
+                continue
+            # find first file matching pattern
+            matched_file = None
+            for file_name in os.listdir(array_cache_path):
+                if re.match(array_def.file_name_pattern, file_name):
+                    matched_file = file_name
+                    break
+            if not matched_file:
+                logger.debug("No file matching pattern %s found in %s.", array_def.file_name_pattern, array_cache_path)
+                continue
+            full_path = path.join(array_cache_path, matched_file)
+        elif label not in material:
             logger.debug("Node %s not found in material properties.", label)
             continue
-        
-        cache_path = bpy.path.native_pathsep(material[label])
-        full_path = path.join(cache_directory, cache_path)
-        if not path.exists(full_path):
-            logger.debug("Cache path %s does not exist.", full_path)
-            continue
+        else:
+            cache_path = bpy.path.native_pathsep(material[label])
+            full_path = path.join(cache_directory, cache_path)
+            if not path.exists(full_path):
+                logger.debug("Cache path %s does not exist.", full_path)
+                continue
         
         node.image = bpy.data.images.load(full_path)
         # check if the node label exists in the TextureNodeConfigs
