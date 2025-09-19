@@ -126,6 +126,35 @@ class FloatArrayMapping:
         else:
             logger.debug("Unsupported field type %s for %s", group_input.type, self.field_name)
 
+class FloatArraySeparateMapping:
+    def __init__(self, prop_name: str, field_names: list[str]):
+        self.prop_name = prop_name
+        self.field_names = field_names
+        
+    def apply(self, material_properties: dict, group_node):
+        prop_value = material_properties.get(self.prop_name)
+        if not prop_value:
+            logger.debug("Property %s not found in material properties.", self.prop_name)
+            return
+        
+        if not isinstance(prop_value, (list, tuple, idprop.types.IDPropertyArray)):
+            logger.debug("Property %s is not an array.", self.prop_name)
+            return
+        
+        for i, field_name in enumerate(self.field_names):
+            if field_name not in group_node.inputs:
+                logger.info("Field %s not found in group node inputs.", field_name)
+                continue
+            
+            group_input = group_node.inputs.get(field_name)
+            if group_input.type == 'VALUE':
+                if i < len(prop_value):
+                    group_input.default_value = prop_value[i]
+                else:
+                    logger.info("Index %d out of range for %s", i, self.prop_name)
+            else:
+                logger.info("Unsupported field type %s for %s", group_input.type, field_name)
+
 class MaterialKeyMapping:
     def __init__(self, prop_name: str, prop_value: str, field_name: str, value_if_present: bool = True):
         self.prop_name = prop_name
@@ -393,6 +422,11 @@ NodeGroupConfigs = {
         MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
         MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
         MaterialKeyMapping('ShaderPackage', 'charactertransparency.shpk', 'IS_TRANSPARENCY', True),
+    ],
+    "tile_select":
+    [
+        FloatMapping('g_TileIndex', 'TileIndex'),
+        FloatArraySeparateMapping('g_TileScale', ['TileRepeatU', 'TileRepeatV']),
     ]
 }
 
@@ -707,7 +741,21 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
                 logger.debug("Cache path %s does not exist.", full_path)
                 continue
         
-        node.image = bpy.data.images.load(full_path)
+        # check 
+        image = None
+        for img in bpy.data.images:
+            if bpy.path.abspath(img.filepath) == full_path:
+                logger.debug("Found existing image for %s: %s", label, img.filepath)
+                image = img
+                break
+        if not image:
+            try:
+                image = bpy.data.images.load(full_path)
+            except Exception as e:
+                logger.exception("Could not load image from %s: %s", full_path, e)
+                continue
+        
+        node.image = image
         # check if the node label exists in the TextureNodeConfigs
         if label in TextureNodeConfigs:
             config = TextureNodeConfigs[label]
