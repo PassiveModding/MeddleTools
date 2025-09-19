@@ -20,9 +20,11 @@ GITHUB_RELEASE_URL = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/
 GITHUB_RELEASE_PAGE_URL = f"https://github.com/{GITHUB_USER}/{GITHUB_REPO}/releases/latest"
 
 # Local manifest path
-extension_directory = str(__package__).split(".")[1] # example of package: bl_ext.vscode_development.FFGear (This will almost always be "user_default")
+extension_parts = str(__package__).split(".")
+if len(extension_parts) < 2:
+    raise Exception("Failed to determine extension directory from package name, __package__ is too short.", __package__)
+extension_directory = extension_parts[1]
 EXTENSIONS_PATH = bpy.utils.user_resource('EXTENSIONS', path=extension_directory)
-FFGEAR_FOLDER = os.path.join(EXTENSIONS_PATH, "FFGear")
 
 latest_version_blob = None  # Holds the latest version blob from GitHub
 latest_version = "Unknown"  # Holds the latest version string
