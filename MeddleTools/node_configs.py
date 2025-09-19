@@ -426,6 +426,7 @@ NodeGroupConfigs = {
     "tile_select":
     [
         FloatMapping('g_TileIndex', 'TileIndex'),
+        FloatMapping('g_TileAlpha', 'TileAlpha'),
         FloatArraySeparateMapping('g_TileScale', ['TileRepeatU', 'TileRepeatV']),
     ]
 }
