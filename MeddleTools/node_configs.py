@@ -11,7 +11,6 @@ try:
     logger.addHandler(logging.NullHandler())
 except Exception:
     pass
-# This file defines configs for specific nodes for new meddle shaders
 
 class ColorMapping:
     def __init__(self, prop_name: str, field_name: str):
@@ -206,6 +205,54 @@ class TextureNodeConfig:
         self.alphaMode = alphaMode
         self.interpolation = interpolation
         self.extension = extension
+
+class MaterialBasedTextureOverride:
+    def __init__(self, shader_package: str, material_condition: dict, texture_overrides: dict):
+        """
+        Args:
+            shader_package: The shader package this override applies to (e.g., 'skin.shpk')
+            material_condition: Dictionary of material property conditions that must be met
+            texture_overrides: Dictionary mapping texture node labels to TextureNodeConfig overrides
+        """
+        self.shader_package = shader_package
+        self.material_condition = material_condition
+        self.texture_overrides = texture_overrides
+    
+    def applies_to_material(self, material: bpy.types.Material) -> bool:
+        """Check if this override applies to the given material"""
+        # Check shader package
+        material_shader = material.get("ShaderPackage")
+        if not material_shader or material_shader != self.shader_package:
+            return False
+        
+        # Check material conditions
+        for prop_name, expected_value in self.material_condition.items():
+            material_value = material.get(prop_name)
+            if material_value != expected_value:
+                return False
+        
+        return True
+    
+    def get_texture_config(self, texture_label: str) -> TextureNodeConfig | None:
+        """Get the override config for a specific texture label"""
+        return self.texture_overrides.get(texture_label)
+
+# Material-based texture overrides
+MaterialTextureOverrides = [
+    # For skin.shpk materials with IS_FACE, set g_SamplerDiffuse_PngCachePath extension to CLIP
+    MaterialBasedTextureOverride(
+        shader_package='skin.shpk',
+        material_condition={'GetMaterialValue': 'GetMaterialValueFace'},
+        texture_overrides={
+            'g_SamplerDiffuse_PngCachePath': TextureNodeConfig(
+                colorSpace='sRGB',
+                alphaMode='CHANNEL_PACKED',
+                interpolation='Linear',
+                extension='CLIP'
+            )
+        }
+    )
+]
 
 TextureNodeConfigs = {
     'g_SamplerDiffuse_PngCachePath': TextureNodeConfig(
@@ -757,19 +804,34 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
                 continue
         
         node.image = image
-        # check if the node label exists in the TextureNodeConfigs
-        if label in TextureNodeConfigs:
+        
+        # Check for material-based overrides first
+        override_config = None
+        for override in MaterialTextureOverrides:
+            if override.applies_to_material(material):
+                override_config = override.get_texture_config(label)
+                if override_config:
+                    logger.debug("Applying material-based override for %s on %s", label, material.name)
+                    break
+        
+        # Use override config if available, otherwise fall back to default config
+        if override_config:
+            config = override_config
+        elif label in TextureNodeConfigs:
             config = TextureNodeConfigs[label]
-            node.image.colorspace_settings.name = config.colorSpace
-            node.image.alpha_mode = config.alphaMode
-            node.interpolation = config.interpolation
-            node.extension = config.extension
         else:
             logger.debug("No config found for node label %s. Using default settings.", label)
             node.image.colorspace_settings.name = 'Non-Color'
             node.image.alpha_mode = 'CHANNEL_PACKED'
             node.interpolation = 'Linear'
             node.extension = 'REPEAT'
+            continue
+        
+        # Apply the configuration
+        node.image.colorspace_settings.name = config.colorSpace
+        node.image.alpha_mode = config.alphaMode
+        node.interpolation = config.interpolation
+        node.extension = config.extension
 
 def setUvMapConfig(mesh: bpy.types.Mesh, material: bpy.types.Material):
     if not mesh.data:
