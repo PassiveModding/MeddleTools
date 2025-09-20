@@ -256,6 +256,7 @@ TextureNodeConfigs: dict[str, Union[TextureNodeConfig, ConditionalTextureConfig]
         ),
         overrides=[
             (
+                # Should fix the issue of teeth being shown when the UV wraps in 'REPEAT' mode.
                 material_condition_equals(ShaderPackage='skin.shpk', GetMaterialValue='GetMaterialValueFace'),
                 TextureNodeConfig(
                     colorSpace='sRGB',
