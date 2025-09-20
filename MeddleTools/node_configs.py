@@ -4,6 +4,7 @@ import idprop.types
 import os.path as path
 import re
 import logging
+from typing import Callable, List, Tuple, Union, Any
 from . import version, blend_import
 
 logger = logging.getLogger(__name__)
@@ -206,61 +207,65 @@ class TextureNodeConfig:
         self.interpolation = interpolation
         self.extension = extension
 
-class MaterialBasedTextureOverride:
-    def __init__(self, shader_package: str, material_condition: dict, texture_overrides: dict):
-        """
-        Args:
-            shader_package: The shader package this override applies to (e.g., 'skin.shpk')
-            material_condition: Dictionary of material property conditions that must be met
-            texture_overrides: Dictionary mapping texture node labels to TextureNodeConfig overrides
-        """
-        self.shader_package = shader_package
-        self.material_condition = material_condition
-        self.texture_overrides = texture_overrides
-    
-    def applies_to_material(self, material: bpy.types.Material) -> bool:
-        """Check if this override applies to the given material"""
-        # Check shader package
-        material_shader = material.get("ShaderPackage")
-        if not material_shader or material_shader != self.shader_package:
+class ConditionalTextureConfig:
+    """Wraps a default TextureNodeConfig with conditional overrides.
+
+    The first matching condition decides the effective config.
+    """
+    def __init__(
+        self,
+        default: TextureNodeConfig,
+        overrides: List[Tuple[Callable[[bpy.types.Material], bool], TextureNodeConfig]] | None = None,
+    ) -> None:
+        self.default = default
+        self.overrides = overrides or []
+
+    def resolve(self, material: bpy.types.Material) -> TextureNodeConfig:
+        for condition, override in self.overrides:
+            try:
+                if condition(material):
+                    return override
+            except Exception as e:
+                logger.warning("Error evaluating texture override condition on %s: %s", material.name if material else "<None>", e)
+        return self.default
+
+
+def material_condition_equals(**expected: Any) -> Callable[[bpy.types.Material], bool]:
+    """Build a condition function that checks material custom properties for equality.
+
+    Example:
+        condition = material_condition_equals(ShaderPackage='skin.shpk', GetMaterialValue='GetMaterialValueFace')
+    """
+    def _check(material: bpy.types.Material) -> bool:
+        if material is None:
             return False
-        
-        # Check material conditions
-        for prop_name, expected_value in self.material_condition.items():
-            material_value = material.get(prop_name)
-            if material_value != expected_value:
+        for key, value in expected.items():
+            if material.get(key) != value:
                 return False
-        
         return True
-    
-    def get_texture_config(self, texture_label: str) -> TextureNodeConfig | None:
-        """Get the override config for a specific texture label"""
-        return self.texture_overrides.get(texture_label)
+    return _check
 
-# Material-based texture overrides
-MaterialTextureOverrides = [
-    # For skin.shpk materials with IS_FACE, set g_SamplerDiffuse_PngCachePath extension to CLIP
-    MaterialBasedTextureOverride(
-        shader_package='skin.shpk',
-        material_condition={'GetMaterialValue': 'GetMaterialValueFace'},
-        texture_overrides={
-            'g_SamplerDiffuse_PngCachePath': TextureNodeConfig(
-                colorSpace='sRGB',
-                alphaMode='CHANNEL_PACKED',
-                interpolation='Linear',
-                extension='CLIP'
+TextureNodeConfigs: dict[str, Union[TextureNodeConfig, ConditionalTextureConfig]] = {
+    # Default config with conditional override for skin face materials
+    'g_SamplerDiffuse_PngCachePath': ConditionalTextureConfig(
+        default=TextureNodeConfig(
+            colorSpace='sRGB',
+            alphaMode='CHANNEL_PACKED',
+            interpolation='Linear',
+            extension='REPEAT'
+        ),
+        overrides=[
+            (
+                material_condition_equals(ShaderPackage='skin.shpk', GetMaterialValue='GetMaterialValueFace'),
+                TextureNodeConfig(
+                    colorSpace='sRGB',
+                    alphaMode='CHANNEL_PACKED',
+                    interpolation='Linear',
+                    extension='CLIP'
+                )
             )
-        }
-    )
-]
-
-TextureNodeConfigs = {
-    'g_SamplerDiffuse_PngCachePath': TextureNodeConfig(
-        colorSpace='sRGB',
-        alphaMode='CHANNEL_PACKED',
-        interpolation='Linear',
-        extension='REPEAT'
-    ),    
+        ]
+    ),
     'g_SamplerSkinDiffuse_PngCachePath': TextureNodeConfig(
         colorSpace='sRGB',
         alphaMode='CHANNEL_PACKED',
@@ -758,78 +763,69 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
     texture_nodes = [node for node in node_tree.nodes if node.type == 'TEX_IMAGE']
 
-    # based on node label, lookup property on material
-    for node in texture_nodes:
-        label = node.label
-        full_path = None
+    def resolve_image_path(label: str) -> str | None:
+        # Custom vertical array path handling
         if label in png_custom_vertical_array_definitions:
-            # check cache_directory.array_textures/
             array_def = png_custom_vertical_array_definitions[label]
             array_cache_path = path.join(cache_directory, array_def.cache_path)
             if not path.exists(array_cache_path):
                 logger.debug("Array cache path %s does not exist.", array_cache_path)
-                continue
-            # find first file matching pattern
-            matched_file = None
-            for file_name in os.listdir(array_cache_path):
-                if re.match(array_def.file_name_pattern, file_name):
-                    matched_file = file_name
-                    break
-            if not matched_file:
-                logger.debug("No file matching pattern %s found in %s.", array_def.file_name_pattern, array_cache_path)
-                continue
-            full_path = path.join(array_cache_path, matched_file)
-        elif label not in material:
-            logger.debug("Node %s not found in material properties.", label)
-            continue
-        else:
-            cache_path = bpy.path.native_pathsep(material[label])
-            full_path = path.join(cache_directory, cache_path)
-            if not path.exists(full_path):
-                logger.debug("Cache path %s does not exist.", full_path)
-                continue
-        
-        # check 
-        image = None
-        for img in bpy.data.images:
-            if bpy.path.abspath(img.filepath) == full_path:
-                logger.debug("Found existing image for %s: %s", label, img.filepath)
-                image = img
-                break
-        if not image:
+                return None
             try:
-                image = bpy.data.images.load(full_path)
+                for file_name in os.listdir(array_cache_path):
+                    if re.match(array_def.file_name_pattern, file_name):
+                        return path.join(array_cache_path, file_name)
             except Exception as e:
-                logger.exception("Could not load image from %s: %s", full_path, e)
-                continue
-        
+                logger.warning("Error listing %s: %s", array_cache_path, e)
+            logger.debug("No file matching pattern %s found in %s.", array_def.file_name_pattern, array_cache_path)
+            return None
+
+        # Standard material property path
+        if label not in material:
+            logger.debug("Node %s not found in material properties.", label)
+            return None
+        cache_path = bpy.path.native_pathsep(material[label])
+        full_path = path.join(cache_directory, cache_path)
+        if not path.exists(full_path):
+            logger.debug("Cache path %s does not exist.", full_path)
+            return None
+        return full_path
+
+    def resolve_config(label: str) -> TextureNodeConfig | None:
+        entry = TextureNodeConfigs.get(label)
+        if not entry:
+            return None
+        if isinstance(entry, ConditionalTextureConfig):
+            return entry.resolve(material)
+        return entry
+
+    for node in texture_nodes:
+        label = node.label
+        full_path = resolve_image_path(label)
+        if not full_path:
+            continue
+
+        try:
+            # check_existing avoids duplicate image data-blocks
+            image = bpy.data.images.load(full_path, check_existing=True)
+        except Exception as e:
+            logger.exception("Could not load image from %s: %s", full_path, e)
+            continue
+
         node.image = image
-        
-        # Check for material-based overrides first
-        override_config = None
-        for override in MaterialTextureOverrides:
-            if override.applies_to_material(material):
-                override_config = override.get_texture_config(label)
-                if override_config:
-                    logger.debug("Applying material-based override for %s on %s", label, material.name)
-                    break
-        
-        # Use override config if available, otherwise fall back to default config
-        if override_config:
-            config = override_config
-        elif label in TextureNodeConfigs:
-            config = TextureNodeConfigs[label]
-        else:
+
+        config = resolve_config(label)
+        if not config:
             logger.debug("No config found for node label %s. Using default settings.", label)
-            node.image.colorspace_settings.name = 'Non-Color'
-            node.image.alpha_mode = 'CHANNEL_PACKED'
+            image.colorspace_settings.name = 'Non-Color'
+            image.alpha_mode = 'CHANNEL_PACKED'
             node.interpolation = 'Linear'
             node.extension = 'REPEAT'
             continue
-        
+
         # Apply the configuration
-        node.image.colorspace_settings.name = config.colorSpace
-        node.image.alpha_mode = config.alphaMode
+        image.colorspace_settings.name = config.colorSpace
+        image.alpha_mode = config.alphaMode
         node.interpolation = config.interpolation
         node.extension = config.extension
 
