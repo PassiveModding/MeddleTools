@@ -229,6 +229,10 @@ class ConditionalTextureConfig:
                 logger.warning("Error evaluating texture override condition on %s: %s", material.name if material else "<None>", e)
         return self.default
 
+class ArrayDefinition:
+    def __init__(self, cache_path: str, file_name_pattern: str):
+        self.cache_path = cache_path
+        self.file_name_pattern = file_name_pattern
 
 def material_condition_equals(**expected: Any) -> Callable[[bpy.types.Material], bool]:
     """Build a condition function that checks material custom properties for equality.
@@ -245,7 +249,25 @@ def material_condition_equals(**expected: Any) -> Callable[[bpy.types.Material],
         return True
     return _check
 
+png_custom_vertical_array_definitions = {
+    'chara_tile_norm_array': ArrayDefinition('array_textures/chara/common/texture/tile_norm_array', r'tile_norm_array\..+\.vertical\.png$'),
+    'chara_tile_orb_array': ArrayDefinition('array_textures/chara/common/texture/tile_orb_array', r'tile_orb_array\..+\.vertical\.png$'),
+}
+
+
 TextureNodeConfigs: dict[str, Union[TextureNodeConfig, ConditionalTextureConfig]] = {
+    'chara_tile_norm_array': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Closest',
+        extension='REPEAT'
+    ),
+    'chara_tile_orb_array': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Closest',
+        extension='REPEAT'
+    ),
     # Default config with conditional override for skin face materials
     'g_SamplerDiffuse_PngCachePath': ConditionalTextureConfig(
         default=TextureNodeConfig(
@@ -481,6 +503,10 @@ NodeGroupConfigs = {
         FloatMapping('g_TileIndex', 'TileIndex'),
         FloatMapping('g_TileAlpha', 'TileAlpha'),
         FloatArraySeparateMapping('g_TileScale', ['TileRepeatU', 'TileRepeatV']),
+    ],
+    "alpha_threshold":
+    [
+        FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold')
     ]
 }
 
@@ -749,16 +775,6 @@ def setBackfaceCulling(mesh: bpy.types.Mesh, material: bpy.types.Material):
         material.use_backface_culling = False
     else:
         material.use_backface_culling = True
-
-class ArrayDefinition:
-    def __init__(self, cache_path: str, file_name_pattern: str):
-        self.cache_path = cache_path
-        self.file_name_pattern = file_name_pattern
-
-png_custom_vertical_array_definitions = {
-    'chara_tile_norm_array': ArrayDefinition('array_textures/chara/common/texture/tile_norm_array', r'tile_norm_array\..+\.vertical\.png$'),
-    'chara_tile_orb_array': ArrayDefinition('array_textures/chara/common/texture/tile_orb_array', r'tile_orb_array\..+\.vertical\.png$'),
-}
 
 def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
