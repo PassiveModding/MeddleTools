@@ -252,6 +252,8 @@ def material_condition_equals(**expected: Any) -> Callable[[bpy.types.Material],
 png_custom_vertical_array_definitions = {
     'chara_tile_norm_array': ArrayDefinition('array_textures/chara/common/texture/tile_norm_array', r'tile_norm_array\..+\.vertical\.png$'),
     'chara_tile_orb_array': ArrayDefinition('array_textures/chara/common/texture/tile_orb_array', r'tile_orb_array\..+\.vertical\.png$'),
+    'bgcommon_detail_n_array': ArrayDefinition('array_textures/bgcommon/nature/detail/texture/detail_n_array', r'detail_n_array\..+\.vertical\.png$'),
+    'bgcommon_detail_d_array': ArrayDefinition('array_textures/bgcommon/nature/detail/texture/detail_d_array', r'detail_d_array\..+\.vertical\.png$'),
 }
 
 
@@ -263,6 +265,18 @@ TextureNodeConfigs: dict[str, Union[TextureNodeConfig, ConditionalTextureConfig]
         extension='REPEAT'
     ),
     'chara_tile_orb_array': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Closest',
+        extension='REPEAT'
+    ),
+    'bgcommon_detail_n_array': TextureNodeConfig(
+        colorSpace='Non-Color',
+        alphaMode='CHANNEL_PACKED',
+        interpolation='Closest',
+        extension='REPEAT'
+    ),
+    'bgcommon_detail_d_array': TextureNodeConfig(
         colorSpace='Non-Color',
         alphaMode='CHANNEL_PACKED',
         interpolation='Closest',
@@ -451,7 +465,11 @@ NodeGroupConfigs = {
     "meddle bg.shpk":
     [
         ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
-        ColorHdrMapping('g_EmissiveColor', 'g_EmissiveColor', 'g_EmissiveColor_magnitude'),        
+        ColorMapping('g_MultiDiffuseColor', 'g_MultiDiffuseColor'),
+        ColorMapping('g_EmissiveColor', 'g_EmissiveColor'),
+        ColorMapping('g_MultiEmissiveColor', 'g_MultiEmissiveColor'),
+        FloatMapping('g_NormalScale', 'g_NormalScale'),
+        FloatMapping('g_MultiNormalScale', 'g_MultiNormalScale'),
         MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),
         MaterialKeyMapping('GetValues', 'BG_UNK2', 'GetMultiValues', True),
         MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOn', 'ApplyVertexColor', True),        
@@ -500,13 +518,26 @@ NodeGroupConfigs = {
     ],
     "tile_select":
     [
-        FloatMapping('g_TileIndex', 'TileIndex'),
-        FloatMapping('g_TileAlpha', 'TileAlpha'),
+        FloatMapping('g_TileIndex', 'g_TileIndex'),
+        FloatMapping('g_TileAlpha', 'g_TileAlpha'),
         FloatArraySeparateMapping('g_TileScale', ['TileRepeatU', 'TileRepeatV']),
     ],
     "alpha_threshold":
     [
         FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold')
+    ],
+    "bg_tile_select":
+    [        
+        FloatMapping('g_DetailID', 'g_DetailID'),
+        FloatArraySeparateMapping('g_DetailColorUvScale', ['g_DetailColorUvScale_X', 'g_DetailColorUvScale_Y', 'g_DetailColorUvScale_Z', 'g_DetailColorUvScale_W']),
+        FloatArraySeparateMapping('g_DetailNormalUvScale', ['g_DetailNormalUvScale_X', 'g_DetailNormalUvScale_Y', 'g_DetailNormalUvScale_Z', 'g_DetailNormalUvScale_W']),
+    ],
+    "bg_detail_blend":
+    [
+        MaterialKeyMapping('ApplyDetailMap', "ApplyDetailMap_Disable", 'ApplyDetailMap', False),
+        FloatMapping('g_DetailNormalScale', 'g_DetailNormalScale'),
+        ColorMapping('g_DetailColor', 'g_DetailColor'),
+        ColorMapping('g_MultiDetailColor', 'g_MultiDetailColor'),
     ]
 }
 
