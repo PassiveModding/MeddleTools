@@ -531,15 +531,17 @@ NodeGroupConfigs = {
     "bg_tile_select":
     [        
         FloatMapping('g_DetailID', 'g_DetailID'),
+        FloatMapping('g_MultiDetailID', 'g_MultiDetailID'),
         FloatArraySeparateMapping('g_DetailColorUvScale', ['g_DetailColorUvScale_X', 'g_DetailColorUvScale_Y', 'g_DetailColorUvScale_Z', 'g_DetailColorUvScale_W']),
         FloatArraySeparateMapping('g_DetailNormalUvScale', ['g_DetailNormalUvScale_X', 'g_DetailNormalUvScale_Y', 'g_DetailNormalUvScale_Z', 'g_DetailNormalUvScale_W']),
     ],
     "bg_detail_blend":
     [
-        MaterialKeyMapping('ApplyDetailMap', "ApplyDetailMap_Disable", 'ApplyDetailMap', False),
-        FloatMapping('g_DetailNormalScale', 'g_DetailNormalScale'),
+        # MaterialKeyMapping('ApplyDetailMap', "ApplyDetailMap_Disable", 'ApplyDetailMap', False), # Disabling for now since it seems to still get applied
         ColorMapping('g_DetailColor', 'g_DetailColor'),
         ColorMapping('g_MultiDetailColor', 'g_MultiDetailColor'),
+        FloatMapping('g_DetailNormalScale', 'g_DetailNormalScale'),
+        FloatMapping('g_MultiDetailNormalScale', 'g_MultiDetailNormalScale'),
     ]
 }
 
