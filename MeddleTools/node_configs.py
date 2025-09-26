@@ -428,6 +428,7 @@ NodeGroupConfigs = {
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFace', 'IS_FACE'),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBodyJJM', 'IS_HROTHGAR'),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFaceEmissive', 'IS_EMISSIVE'),
+        MaterialKeyMapping('GetDecalColor', 'GetDecalColorAlpha', 'IS_DECAL_ALPHA'),
         # F52CCF05 = A7D2FF60 (face)
         # F52CCF05 = DFE74BAC (body/hands/etc)
     ],
