@@ -524,7 +524,8 @@ NodeGroupConfigs = {
     ],
     "alpha_threshold":
     [
-        FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold')
+        FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold'),
+        MaterialKeyMapping('CategoryDiffuseAlpha', '0x5D146A23', 'Disable', True),
     ],
     "bg_tile_select":
     [        
