@@ -126,6 +126,35 @@ class FloatArrayMapping:
         else:
             logger.debug("Unsupported field type %s for %s", group_input.type, self.field_name)
 
+class VectorMapping:
+    def __init__(self, prop_name: str, field_name: str, destination_size: int, value_offset: int = 0):
+        self.prop_name = prop_name
+        self.field_name = field_name
+        self.destination_size = destination_size
+        self.value_offset = value_offset
+
+    def apply(self, material_properties: dict, group_node):
+        prop_value = material_properties.get(self.prop_name)
+        if not prop_value:
+            logger.debug("Property %s not found in material properties.", self.prop_name)
+            return
+        if self.field_name not in group_node.inputs:
+            logger.debug("Field %s not found in group node inputs.", self.field_name)
+            return
+
+        group_input = group_node.inputs.get(self.field_name)
+        if group_input.type == 'VECTOR':
+            prop_list = prop_value.to_list()
+            if self.value_offset > 0:
+                prop_list = prop_list[self.value_offset:]            
+            while len(prop_list) < self.destination_size:
+                prop_list.append(0.0)
+            if len(prop_list) > self.destination_size:
+                prop_list = prop_list[:self.destination_size]
+            group_input.default_value = prop_list
+        else:
+            logger.debug("Unsupported field type %s for %s", group_input.type, self.field_name)
+
 class FloatArraySeparateMapping:
     def __init__(self, prop_name: str, field_names: list[str]):
         self.prop_name = prop_name
@@ -425,11 +454,11 @@ NodeGroupConfigs = {
         ColorMapping('MeshColor', 'Highlights Color'),
         ColorMapping('DecalColor', 'Decal Color'),
         FloatMapping('DecalColor', 'Decal Color Strength', 3),
-        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFace', 'IS_FACE'),
-        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBody', 'IS_BODY'), # TODO: Use this input
-        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBodyJJM', 'IS_HROTHGAR'),
-        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFaceEmissive', 'IS_EMISSIVE'),
-        MaterialKeyMapping('GetDecalColor', 'GetDecalColorAlpha', 'IS_DECAL_ALPHA'),
+        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFace', 'GetMaterialValueFace'),
+        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBody', 'GetMaterialValueBody'), # TODO: Use this input
+        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBodyJJM', 'GetMaterialValueBodyJJM'),
+        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFaceEmissive', 'GetMaterialValueFaceEmissive'),
+        MaterialKeyMapping('GetDecalColor', 'GetDecalColorAlpha', 'GetDecalColorAlpha'),
     ],
     'meddle decaluv': 
     [
@@ -441,8 +470,8 @@ NodeGroupConfigs = {
         ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
         ColorMapping('MainColor', 'Hair Color'),
         ColorMapping('MeshColor', 'Highlights Color'),
-        MaterialKeyMapping('GetSubColor', 'GetSubColorFace', 'IS_FACE', True),
-        MaterialKeyMapping('GetSubColor', 'GetSubColorHair', 'IS_FACE', False),
+        MaterialKeyMapping('GetSubColor', 'GetSubColorFace', 'GetSubColorFace'),
+        MaterialKeyMapping('GetSubColor', 'GetSubColorHair', 'GetSubColorHair'),
     ],
     'meddle charactertattoo.shpk':
     [        
@@ -457,8 +486,8 @@ NodeGroupConfigs = {
         FloatMapping('RightIrisColor', 'right_iris_limbal_ring_intensity', 3),
         ColorMapping('g_IrisRingColor', 'g_IrisRingColor'),
         FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
-        FloatMapping('g_IrisRingUvRadius', 'g_IrisRingUvRadius_X', 0),
-        FloatMapping('g_IrisRingUvRadius', 'g_IrisRingUvRadius_Y', 1),
+        VectorMapping('g_IrisRingUvFadeWidth', 'g_IrisRingUvFadeWidth', 2),
+        VectorMapping('g_IrisRingUvRadius', 'g_IrisRingUvRadius', 2),
         # g_IrisOptionColorEmissiveIntensity
         # g_IrisOptionColorEmissiveRate
         # g_IrisOptionColorRate
@@ -472,12 +501,8 @@ NodeGroupConfigs = {
         # g_IrisUvRadius
         
         # Stub Mappings
-        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
-        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),  
-        
-        # Old mappings
-        FloatMapping('unk_LimbalRingRange', 'g_IrisRingUvRadius_X', 0),
-        FloatMapping('unk_LimbalRingRange', 'g_IrisRingUvRadius_Y', 1),      
+        VectorMapping('unk_LimbalRingFade', 'g_IrisRingUvFadeWidth', 2),
+        VectorMapping('unk_LimbalRingRange', 'g_IrisRingUvRadius', 2),
     ],
     "meddle bg.shpk":
     [
@@ -487,9 +512,9 @@ NodeGroupConfigs = {
         ColorMapping('g_MultiEmissiveColor', 'g_MultiEmissiveColor'),
         FloatMapping('g_NormalScale', 'g_NormalScale'),
         FloatMapping('g_MultiNormalScale', 'g_MultiNormalScale'),
-        MaterialKeyMapping('GetValues', 'GetSingleValues', 'GetMultiValues', False),
+        MaterialKeyMapping('GetValues', 'GetSingleValues', 'GetSingleValues', True),
         MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),
-        MaterialKeyMapping('GetValues', 'GetAlphaMultiValues', 'GetMultiValues', True), # GetAlphaMultiValues2, GetAlphaMultiValues3 used in bguvcroll/lightshaft
+        MaterialKeyMapping('GetValues', 'GetAlphaMultiValues', 'GetAlphaMultiValues', True), # GetAlphaMultiValues2, GetAlphaMultiValues3 used in bguvcroll/lightshaft
         MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOff', 'ApplyVertexColor', False),        
         MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOn', 'ApplyVertexColor', True),        
     ],
@@ -501,8 +526,8 @@ NodeGroupConfigs = {
         ColorMapping('g_WaterDeepColor', 'g_WaterDeepColor'),
         
         # Old mappings
-        ColorMapping('0xD315E728', 'unk_WaterColor'),
-        ColorMapping('unk_WaterColor', 'unk_WaterColor'),
+        ColorMapping('0xD315E728', 'g_WaterDeepColor'),
+        ColorMapping('unk_WaterColor', 'g_WaterDeepColor'),
     ],
     # "meddle river.shpk": # Currently re-using water.shpk node group
     # [
@@ -510,7 +535,7 @@ NodeGroupConfigs = {
     #     ColorMapping('g_WhitecapColor', 'g_WhitecapColor'),
     #     FloatMapping('g_Transparency', 'g_Transparency'),
     #     ColorMapping('g_WaterDeepColor', 'g_WaterDeepColor'),
-        
+    #
     #     # Old mappings
     #     ColorMapping('0xD315E728', 'unk_WaterColor'),
     #     ColorMapping('unk_WaterColor', 'unk_WaterColor'),
@@ -536,19 +561,23 @@ NodeGroupConfigs = {
     "meddle character.shpk":
     [
         ColorMapping('SkinColor', 'SkinColor'),
-        MaterialKeyMapping('GetValues', 'GetValuesCompatibility', 'IS_COMPATIBILITY', True),
+        MaterialKeyMapping('GetValues', 'GetValuesCompatibility', 'GetValuesCompatibility', True),
         MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
         MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
         MaterialKeyMapping('ShaderPackage', 'charactertransparency.shpk', 'IS_TRANSPARENCY', True),
     
         # Old mappings
-        MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'IS_COMPATIBILITY', True), # old meddle naming?  
+        MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'GetValuesCompatibility', True),  
     ],
     "tile_select":
     [
         FloatMapping('g_TileIndex', 'g_TileIndex'),
         FloatMapping('g_TileAlpha', 'g_TileAlpha'),
         FloatArraySeparateMapping('g_TileScale', ['TileRepeatU', 'TileRepeatV']),
+    ],
+    "hair_alpha_threshold":
+    [
+        FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold'),
     ],
     "alpha_threshold":
     [
@@ -557,18 +586,20 @@ NodeGroupConfigs = {
     "bg_alpha_threshold":
     [
         FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold'),
-        MaterialKeyMapping('ApplyAlphaTest', 'ApplyAlphaTestOn', 'ApplyAlphaTestOn', True),
+        MaterialKeyMapping('ApplyAlphaTest', 'ApplyAlphaTestOn', 'ApplyAlphaTest', True),
+        MaterialKeyMapping('ApplyAlphaTest', 'ApplyAlphaTestOff', 'ApplyAlphaTest', False),
     ],
     "bg_tile_select":
     [        
         FloatMapping('g_DetailID', 'g_DetailID'),
         FloatMapping('g_MultiDetailID', 'g_MultiDetailID'),
-        FloatArraySeparateMapping('g_DetailColorUvScale', ['g_DetailColorUvScale_X', 'g_DetailColorUvScale_Y', 'g_DetailColorUvScale_Z', 'g_DetailColorUvScale_W']),
-        FloatArraySeparateMapping('g_DetailNormalUvScale', ['g_DetailNormalUvScale_X', 'g_DetailNormalUvScale_Y', 'g_DetailNormalUvScale_Z', 'g_DetailNormalUvScale_W']),
+        VectorMapping('g_DetailColorUvScale', 'g_DetailColorUvScale', 2),
+        VectorMapping('g_DetailColorUvScale', 'g_DetailColorUvScale_Multi', 2, 2),
+        VectorMapping('g_DetailNormalUvScale', 'g_DetailNormalUvScale', 2),
+        VectorMapping('g_DetailNormalUvScale', 'g_DetailNormalUvScale_Multi', 2, 2),
     ],
     "bg_detail_blend":
     [
-        # MaterialKeyMapping('ApplyDetailMap', "ApplyDetailMap_Disable", 'ApplyDetailMap', False), # Disabling for now since it seems to still get applied
         ColorMapping('g_DetailColor', 'g_DetailColor'),
         ColorMapping('g_MultiDetailColor', 'g_MultiDetailColor'),
         FloatMapping('g_DetailNormalScale', 'g_DetailNormalScale'),
