@@ -286,9 +286,22 @@ class ApplyToSelected(bpy.types.Operator):
             return {'CANCELLED'}
         
         selected_objects = context.selected_objects
+        
+        all_materials_unique = set()
         for obj in selected_objects:
             if obj.type == 'MESH':
-                node_configs.map_mesh(obj, self.directory, True)
+                for mat_slot in obj.material_slots:
+                    if mat_slot.material is not None:
+                        all_materials_unique.add(mat_slot.material)
+                        
+        for mat in all_materials_unique:
+            # change name to remove Meddle prefix if it exists
+            if mat.name.startswith("Meddle "):
+                mat.name = mat.name[len("Meddle "):]
+
+        for obj in selected_objects:
+            if obj.type == 'MESH':
+                node_configs.map_mesh(obj, self.directory)
                 
         return {'FINISHED'}
 
