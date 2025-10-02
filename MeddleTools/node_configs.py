@@ -426,11 +426,10 @@ NodeGroupConfigs = {
         ColorMapping('DecalColor', 'Decal Color'),
         FloatMapping('DecalColor', 'Decal Color Strength', 3),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFace', 'IS_FACE'),
+        MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBody', 'IS_BODY'), # TODO: Use this input
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueBodyJJM', 'IS_HROTHGAR'),
         MaterialKeyMapping('GetMaterialValue', 'GetMaterialValueFaceEmissive', 'IS_EMISSIVE'),
         MaterialKeyMapping('GetDecalColor', 'GetDecalColorAlpha', 'IS_DECAL_ALPHA'),
-        # F52CCF05 = A7D2FF60 (face)
-        # F52CCF05 = DFE74BAC (body/hands/etc)
     ],
     'meddle decaluv': 
     [
@@ -458,10 +457,27 @@ NodeGroupConfigs = {
         FloatMapping('RightIrisColor', 'right_iris_limbal_ring_intensity', 3),
         ColorMapping('g_IrisRingColor', 'g_IrisRingColor'),
         FloatMapping('g_IrisRingEmissiveIntensity', 'g_IrisRingEmissiveIntensity'),
-        FloatMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_start', 0),
-        FloatMapping('unk_LimbalRingRange', 'unk_LimbalRingRange_end', 1),
+        FloatMapping('g_IrisRingUvRadius', 'g_IrisRingUvRadius_X', 0),
+        FloatMapping('g_IrisRingUvRadius', 'g_IrisRingUvRadius_Y', 1),
+        # g_IrisOptionColorEmissiveIntensity
+        # g_IrisOptionColorEmissiveRate
+        # g_IrisOptionColorRate
+        # g_IrisRingColor
+        # g_IrisRingEmissiveIntensity
+        # g_IrisRingForceColor
+        # g_IrisRingOddRate
+        # g_IrisRingUvFadeWidth
+        # g_IrisRingUvRadius
+        # g_IrisThickness
+        # g_IrisUvRadius
+        
+        # Stub Mappings
         FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_start', 0),
-        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),        
+        FloatMapping('unk_LimbalRingFade', 'unk_LimbalRingFade_end', 1),  
+        
+        # Old mappings
+        FloatMapping('unk_LimbalRingRange', 'g_IrisRingUvRadius_X', 0),
+        FloatMapping('unk_LimbalRingRange', 'g_IrisRingUvRadius_Y', 1),      
     ],
     "meddle bg.shpk":
     [
@@ -471,30 +487,39 @@ NodeGroupConfigs = {
         ColorMapping('g_MultiEmissiveColor', 'g_MultiEmissiveColor'),
         FloatMapping('g_NormalScale', 'g_NormalScale'),
         FloatMapping('g_MultiNormalScale', 'g_MultiNormalScale'),
+        MaterialKeyMapping('GetValues', 'GetSingleValues', 'GetMultiValues', False),
         MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),
-        MaterialKeyMapping('GetValues', 'BG_UNK2', 'GetMultiValues', True),
+        MaterialKeyMapping('GetValues', 'GetAlphaMultiValues', 'GetMultiValues', True), # GetAlphaMultiValues2, GetAlphaMultiValues3 used in bguvcroll/lightshaft
+        MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOff', 'ApplyVertexColor', False),        
         MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOn', 'ApplyVertexColor', True),        
     ],
     "meddle water.shpk":
     [
-        ColorMapping('0xD315E728', 'unk_WaterColor'),
-        ColorMapping('unk_WaterColor', 'unk_WaterColor'),
         ColorMapping('g_RefractionColor', 'g_RefractionColor'),
         ColorMapping('g_WhitecapColor', 'g_WhitecapColor'),
         FloatMapping('g_Transparency', 'g_Transparency'),
-    ],
-    "meddle river.shpk":
-    [
+        ColorMapping('g_WaterDeepColor', 'g_WaterDeepColor'),
+        
+        # Old mappings
         ColorMapping('0xD315E728', 'unk_WaterColor'),
         ColorMapping('unk_WaterColor', 'unk_WaterColor'),
-        ColorMapping('g_RefractionColor', 'g_RefractionColor'),
-        ColorMapping('g_WhitecapColor', 'g_WhitecapColor'),
-        FloatMapping('g_Transparency', 'g_Transparency'),
     ],
+    # "meddle river.shpk": # Currently re-using water.shpk node group
+    # [
+    #     ColorMapping('g_RefractionColor', 'g_RefractionColor'),
+    #     ColorMapping('g_WhitecapColor', 'g_WhitecapColor'),
+    #     FloatMapping('g_Transparency', 'g_Transparency'),
+    #     ColorMapping('g_WaterDeepColor', 'g_WaterDeepColor'),
+        
+    #     # Old mappings
+    #     ColorMapping('0xD315E728', 'unk_WaterColor'),
+    #     ColorMapping('unk_WaterColor', 'unk_WaterColor'),
+    # ],
     "meddle bgcolorchange.shpk":
     [
         ColorMapping('StainColor', 'StainColor'),
         ColorMapping('g_DiffuseColor', 'g_DiffuseColor'),
+        FloatMapping('g_NormalScale', 'g_NormalScale'),
     ],
     "meddle lightshaft.shpk":
     [
@@ -512,10 +537,12 @@ NodeGroupConfigs = {
     [
         ColorMapping('SkinColor', 'SkinColor'),
         MaterialKeyMapping('GetValues', 'GetValuesCompatibility', 'IS_COMPATIBILITY', True),
-        MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'IS_COMPATIBILITY', True), # old meddle naming?  
         MaterialKeyMapping('ShaderPackage', 'characterlegacy.shpk', 'IS_LEGACY', True),     
         MaterialKeyMapping('ShaderPackage', 'characterstockings.shpk', 'IS_STOCKING', True),
         MaterialKeyMapping('ShaderPackage', 'charactertransparency.shpk', 'IS_TRANSPARENCY', True),
+    
+        # Old mappings
+        MaterialKeyMapping('GetValuesTextureType', 'Compatibility', 'IS_COMPATIBILITY', True), # old meddle naming?  
     ],
     "tile_select":
     [
@@ -526,7 +553,11 @@ NodeGroupConfigs = {
     "alpha_threshold":
     [
         FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold'),
-        MaterialKeyMapping('CategoryDiffuseAlpha', '0x5D146A23', 'Disable', True),
+    ],
+    "bg_alpha_threshold":
+    [
+        FloatMapping('g_AlphaThreshold', 'g_AlphaThreshold'),
+        MaterialKeyMapping('ApplyAlphaTest', 'ApplyAlphaTestOn', 'ApplyAlphaTestOn', True),
     ],
     "bg_tile_select":
     [        
@@ -576,7 +607,7 @@ shader_package_mappings = {
     "river.shpk": "water.shpk"
 }
 
-def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
+def apply_material(slot: bpy.types.MaterialSlot):
     if slot.material is None:
         return False
     try:            
@@ -603,7 +634,7 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
             if shpk_substring in new_name:
                 new_name = new_name.replace(shpk_substring, '')
             new_name = f'Meddle {version.current_version} {shader_package} {new_name}'
-        elif not force_apply:
+        else:
             logger.debug("Material %s already has Meddle prefix, skipping.", new_name)
             return False  # do not apply if already meddle material
         template_copy = template_material.copy()
@@ -624,13 +655,13 @@ def apply_material(slot: bpy.types.MaterialSlot, force_apply: bool = False):
         return False
     
 
-def map_mesh(mesh: bpy.types.Mesh, cache_directory: str, force_apply: bool = False):
+def map_mesh(mesh: bpy.types.Mesh, cache_directory: str):
     for slot in mesh.material_slots:
         if slot.material is None:
             continue
        
        
-        if not apply_material(slot, force_apply):
+        if not apply_material(slot):
             continue
         
         logger.info("Applying material %s to mesh %s", slot.material.name, mesh.name)
