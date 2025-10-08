@@ -516,7 +516,15 @@ NodeGroupConfigs = {
         MaterialKeyMapping('GetValues', 'GetMultiValues', 'GetMultiValues', True),
         MaterialKeyMapping('GetValues', 'GetAlphaMultiValues', 'GetAlphaMultiValues', True), # GetAlphaMultiValues2, GetAlphaMultiValues3 used in bguvcroll/lightshaft
         MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOff', 'ApplyVertexColor', False),        
-        MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOn', 'ApplyVertexColor', True),        
+        MaterialKeyMapping('ApplyVertexColor', 'ApplyVertexColorOn', 'ApplyVertexColor', True),    
+        
+        # 0xF769298E
+        # R-?
+        # G-?
+        # B- increases multi influence?
+        # A-?    
+        
+        # PENDING: Fix detail influence for terrain, currently borked
     ],
     "meddle water.shpk":
     [
