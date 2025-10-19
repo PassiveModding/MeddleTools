@@ -7,12 +7,16 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-CONTENT_DEFAULTS = {
-    'normal': (np.array([0.5, 0.5, 1.0, 1.0], dtype=np.float32), 0.02),
-    'roughness': (np.array([0.5, 0.5, 0.5, 1.0], dtype=np.float32), 0.02),
-    'alpha': (np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32), 0.02),
-    'diffuse': (np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32), 0.05)
+# Consolidated texture defaults: (default_color, content_threshold)
+TEXTURE_DEFAULTS = {
+    'diffuse': ((0.0, 0.0, 0.0, 1.0), 0.05),
+    'normal': ((0.5, 0.5, 1.0, 1.0), 0.02),
+    'roughness': ((0.5, 0.5, 0.5, 1.0), 0.02),
+    'alpha': ((1.0, 1.0, 1.0, 1.0), 0.02)
 }
+
+# Non-color texture types that need specific colorspace handling
+NON_COLOR_TYPES = {'normal', 'roughness', 'alpha'}
 
 
 def _uv_bounds_to_pixels(uv_bounds, size):
@@ -41,6 +45,50 @@ def nparray_to_img(image, nparr):
     image.pixels.foreach_set(nparr.ravel())
 
 
+def find_texture_in_material(material, tex_type):
+    """Find the appropriate texture image for a given texture type from material
+    
+    Args:
+        material: Blender material to search
+        tex_type: Type of texture to find ('diffuse', 'normal', 'roughness', 'alpha')
+    
+    Returns:
+        Image or None if not found
+    """
+    if not material.use_nodes:
+        return None
+    
+    # First try to find by name
+    for node in material.node_tree.nodes:
+        if node.type == 'TEX_IMAGE' and node.image:
+            node_name_lower = node.image.name.lower()
+            if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
+                return node.image
+    
+    # Then try to find by socket connections
+    links = material.node_tree.links
+    socket_mapping = {
+        'diffuse': 'Base Color',
+        'roughness': 'Roughness',
+        'alpha': 'Alpha'
+    }
+    
+    if tex_type in socket_mapping:
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
+                return node.image
+    elif tex_type == 'normal':
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
+                return node.image
+    
+    return None
+
+
 def find_content_bounds(image, tex_type, uv_bounds):
     """
     Find actual content bounds within a texture by detecting non-default pixels.
@@ -65,7 +113,8 @@ def find_content_bounds(image, tex_type, uv_bounds):
     uv_region = pixels[crop_y_start:crop_y_end, crop_x_start:crop_x_end, :]
     
     # Define default colors and thresholds per texture type
-    default_color, threshold = CONTENT_DEFAULTS.get(tex_type, CONTENT_DEFAULTS['diffuse'])
+    default_color_tuple, threshold = TEXTURE_DEFAULTS.get(tex_type, TEXTURE_DEFAULTS['diffuse'])
+    default_color = np.array(default_color_tuple, dtype=np.float32)
     
     # Find content mask
     diff = np.abs(uv_region - default_color)
@@ -140,187 +189,126 @@ class RunAtlas(Operator):
     def analyze_material_sizes(self, materials, texture_types, mesh):
         """Analyze materials to determine texture sizes and UV bounds"""
         material_info = []
-        material_uv_bounds = {}
-        
         uv_layer = mesh.uv_layers.get("UVMap")
-        if not uv_layer:
-            logger.warning("No UVMap found, using full UV range")
-            for mat_idx in range(len(materials)):
-                material_uv_bounds[mat_idx] = (0.0, 0.0, 1.0, 1.0)
-        else:
-            for mat_idx in range(len(materials)):
-                material_uv_bounds[mat_idx] = None
-            
+        
+        # Calculate UV bounds per material
+        material_uv_bounds = {i: (0.0, 0.0, 1.0, 1.0) for i in range(len(materials))} if not uv_layer else {}
+        
+        if uv_layer:
+            material_uv_bounds = {i: None for i in range(len(materials))}
             for poly in mesh.polygons:
-                mat_idx = poly.material_index
-                
                 for loop_idx in poly.loop_indices:
                     uv = uv_layer.data[loop_idx].uv
-                    
+                    mat_idx = poly.material_index
                     if material_uv_bounds[mat_idx] is None:
                         material_uv_bounds[mat_idx] = (uv.x, uv.y, uv.x, uv.y)
                     else:
                         min_u, min_v, max_u, max_v = material_uv_bounds[mat_idx]
-                        material_uv_bounds[mat_idx] = (
-                            min(min_u, uv.x),
-                            min(min_v, uv.y),
-                            max(max_u, uv.x),
-                            max(max_v, uv.y)
-                        )
+                        material_uv_bounds[mat_idx] = (min(min_u, uv.x), min(min_v, uv.y), max(max_u, uv.x), max(max_v, uv.y))
         
         logger.info(f"Calculated UV bounds for {len(materials)} materials")
         
         for mat_idx, material in enumerate(materials):
-            if material_uv_bounds[mat_idx] is None:
+            if material_uv_bounds.get(mat_idx) is None:
                 logger.info(f"Skipping material {mat_idx} ({material.name}): not used")
                 continue
             
             initial_uv_bounds = material_uv_bounds[mat_idx]
-            actual_tex_width = None
-            actual_tex_height = None
-            has_texture = False
             refined_bounds = initial_uv_bounds
-            texture_types_found = {t: None for t in texture_types}
-            island_packing = None
+            actual_tex_width = actual_tex_height = None
+            has_texture = False
             
             if material.use_nodes:
-                for node in material.node_tree.nodes:
-                    if node.type == 'TEX_IMAGE' and node.image and node.image.has_data:
-                        has_texture = True
-                        node_name_lower = node.image.name.lower()
-                        
-                        for tex_type in texture_types:
-                            if f'bake_{tex_type}' in node_name_lower or f'_{tex_type}' in node_name_lower:
-                                texture_types_found[tex_type] = node.image
-                                break
-                        
-                        img_width, img_height = node.image.size
-                        if actual_tex_width is None or (img_width * img_height > actual_tex_width * actual_tex_height):
-                            actual_tex_width = img_width
-                            actual_tex_height = img_height
+                # Find all textures and determine size
+                texture_types_found = {t: find_texture_in_material(material, t) for t in texture_types}
                 
+                for image in texture_types_found.values():
+                    if image and image.has_data:
+                        has_texture = True
+                        img_width, img_height = image.size
+                        if actual_tex_width is None or (img_width * img_height > actual_tex_width * actual_tex_height):
+                            actual_tex_width, actual_tex_height = img_width, img_height
+                
+                # Find tight content bounds
                 content_bounds_found = []
-                for tex_type, image in texture_types_found.items():
-                    if image is not None:
-                        content_bound = find_content_bounds(image, tex_type, initial_uv_bounds)
-                        if content_bound != initial_uv_bounds:
-                            content_bounds_found.append(content_bound)
-                            logger.debug(f"  {tex_type}: content bounds {content_bound}")
+                for tex_type, img in texture_types_found.items():
+                    if img is not None:
+                        cb = find_content_bounds(img, tex_type, initial_uv_bounds)
+                        if cb != initial_uv_bounds:
+                            content_bounds_found.append(cb)
                 
                 if content_bounds_found:
-                    all_min_u = min(b[0] for b in content_bounds_found)
-                    all_min_v = min(b[1] for b in content_bounds_found)
-                    all_max_u = max(b[2] for b in content_bounds_found)
-                    all_max_v = max(b[3] for b in content_bounds_found)
-                    refined_bounds = (all_min_u, all_min_v, all_max_u, all_max_v)
+                    refined_bounds = (min(b[0] for b in content_bounds_found), min(b[1] for b in content_bounds_found),
+                                    max(b[2] for b in content_bounds_found), max(b[3] for b in content_bounds_found))
                     
                     orig_area = (initial_uv_bounds[2] - initial_uv_bounds[0]) * (initial_uv_bounds[3] - initial_uv_bounds[1])
-                    refined_area = (all_max_u - all_min_u) * (all_max_v - all_min_v)
-                    savings = (1.0 - refined_area / orig_area) * 100 if orig_area > 0 else 0
-                    if savings > 5:
+                    refined_area = (refined_bounds[2] - refined_bounds[0]) * (refined_bounds[3] - refined_bounds[1])
+                    if (savings := (1.0 - refined_area / orig_area) * 100 if orig_area > 0 else 0) > 5:
                         logger.info(f"Material {mat_idx} ({material.name}): content trim saving {savings:.1f}%")
             
-            if actual_tex_width is None:
-                actual_tex_width = 1024
-                actual_tex_height = 1024
+            actual_tex_width = actual_tex_width or 1024
+            actual_tex_height = actual_tex_height or 1024
             
             min_u, min_v, max_u, max_v = refined_bounds
             crop_width = max(int((max_u - min_u) * actual_tex_width), 16)
             crop_height = max(int((max_v - min_v) * actual_tex_height), 16)
             
             material_info.append({
-                'index': mat_idx,
-                'material': material,
-                'width': crop_width,
-                'height': crop_height,
-                'has_texture': has_texture,
-                'uv_bounds': refined_bounds,
-                'texture_size': (actual_tex_width, actual_tex_height)
+                'index': mat_idx, 'material': material, 'width': crop_width, 'height': crop_height,
+                'has_texture': has_texture, 'uv_bounds': refined_bounds, 'texture_size': (actual_tex_width, actual_tex_height)
             })
-            
             logger.info(f"Material {mat_idx} ({material.name}): {crop_width}x{crop_height} px")
         
         return material_info
     
     def calculate_atlas_layout(self, material_info):
-        """
-        Calculate efficient atlas layout using skyline packing algorithm.
-        Packs textures at actual pixel dimensions, placing larger textures first.
-        """
+        """Calculate efficient atlas layout using skyline packing algorithm"""
         sorted_materials = sorted(material_info, key=lambda x: x['width'] * x['height'], reverse=True)
-        
         logger.info(f"Packing {len(sorted_materials)} materials")
         
-        placements = {}
-        shelves = []
-        atlas_height = 0
-        max_used_width = 0
-
-        width_limit = max((info['width'] for info in sorted_materials), default=0)
-        width_limit = max(width_limit, 64)
+        placements, shelves, atlas_height, max_used_width = {}, [], 0, 0
+        width_limit = max((info['width'] for info in sorted_materials), default=64)
 
         for info in sorted_materials:
-            width = info['width']
-            height = info['height']
-            mat_idx = info['index']
-
+            width, height, mat_idx = info['width'], info['height'], info['index']
+            width_limit = max(width_limit, width)
             placement = None
 
-            if width > width_limit:
-                width_limit = width
-
+            # Try to fit on existing shelf
             for shelf in shelves:
                 if height <= shelf['height'] and shelf['next_x'] + width <= width_limit:
-                    x_pos = shelf['next_x']
+                    placement = {'x': shelf['next_x'], 'y': shelf['y'], 'width': width, 'height': height}
                     shelf['next_x'] += width
                     shelf['used_width'] = max(shelf['used_width'], shelf['next_x'])
-                    placement = {
-                        'x': x_pos,
-                        'y': shelf['y'],
-                        'width': width,
-                        'height': height
-                    }
                     max_used_width = max(max_used_width, shelf['used_width'])
                     break
 
+            # Create new shelf if needed
             if placement is None:
-                shelf_y = atlas_height
-                placement = {
-                    'x': 0,
-                    'y': shelf_y,
-                    'width': width,
-                    'height': height
-                }
-
-                shelves.append({
-                    'y': shelf_y,
-                    'height': height,
-                    'next_x': width,
-                    'used_width': width
-                })
-
-                atlas_height = shelf_y + height
+                placement = {'x': 0, 'y': atlas_height, 'width': width, 'height': height}
+                shelves.append({'y': atlas_height, 'height': height, 'next_x': width, 'used_width': width})
+                atlas_height += height
                 max_used_width = max(max_used_width, width)
 
             placements[mat_idx] = placement
-            logger.debug(
-                f"Placed material {mat_idx} ({width}x{height}) at ({placement['x']}, {placement['y']})"
-            )
         
-        atlas_width = max(max_used_width, 64)
-        atlas_height = max(atlas_height, 64)
+        # Round up to nearest power of 2
+        def next_power_of_2(n):
+            """Round up to the nearest power of 2"""
+            if n <= 0:
+                return 1
+            power = 1
+            while power < n:
+                power *= 2
+            return power
         
-        total_material_area = sum(info['width'] * info['height'] for info in material_info)
-        atlas_area = atlas_width * atlas_height
-        efficiency = (total_material_area / atlas_area * 100) if atlas_area > 0 else 0
-        
+        atlas_width = next_power_of_2(max(max_used_width, 64))
+        atlas_height = next_power_of_2(max(atlas_height, 64))
+        total_area = sum(info['width'] * info['height'] for info in material_info)
+        efficiency = (total_area / (atlas_width * atlas_height) * 100) if atlas_width * atlas_height > 0 else 0
         logger.info(f"Atlas: {atlas_width}x{atlas_height}, efficiency: {efficiency:.1f}%")
         
-        return {
-            'width': atlas_width,
-            'height': atlas_height,
-            'placements': placements
-        }
+        return {'width': atlas_width, 'height': atlas_height, 'placements': placements}
     
     def create_texture_atlas(self, context, joined_mesh, atlas_name):
         """Create texture atlas from all materials on mesh and update UVs"""
@@ -376,15 +364,6 @@ class RunAtlas(Operator):
         """Create and initialize atlas images for each texture type"""
         atlas_images = {}
         
-        default_colors = {
-            'diffuse': (0, 0, 0, 1),
-            'normal': (0.5, 0.5, 1.0, 1.0),
-            'roughness': (0.5, 0.5, 0.5, 1.0),
-            'alpha': (1.0, 1.0, 1.0, 1.0)
-        }
-        
-        non_color_types = {'normal', 'roughness', 'alpha'}
-        
         for tex_type in texture_types:
             atlas_image_name = f"{atlas_name}_{tex_type}"
             atlas_image = bpy.data.images.new(
@@ -396,12 +375,13 @@ class RunAtlas(Operator):
             atlas_image.filepath = bpy.path.abspath(f"//Bake/{atlas_image_name}.png")
             atlas_image.file_format = 'PNG'
             
-            if tex_type in non_color_types:
+            if tex_type in NON_COLOR_TYPES:
                 atlas_image.colorspace_settings.name = 'Non-Color'
             
+            # Initialize with default color for this texture type
+            default_color, _ = TEXTURE_DEFAULTS.get(tex_type, TEXTURE_DEFAULTS['diffuse'])
             rgba = np.zeros((atlas_height, atlas_width, 4), dtype=np.float32)
-            r, g, b, a = default_colors[tex_type]
-            rgba[:, :] = [r, g, b, a]
+            rgba[:, :] = default_color
             
             nparray_to_img(atlas_image, rgba)
             atlas_images[tex_type] = atlas_image
@@ -447,10 +427,10 @@ class RunAtlas(Operator):
             # Handle alpha texture separately if pack_alpha is enabled
             alpha_source = None
             if pack_alpha:
-                alpha_source = self._find_texture_for_type(material, 'alpha')
+                alpha_source = find_texture_in_material(material, 'alpha')
 
             for tex_type in texture_types:
-                source_image = self._find_texture_for_type(material, tex_type)
+                source_image = find_texture_in_material(material, tex_type)
                 
                 if not source_image or not source_image.has_data:
                     logger.debug(f"No {tex_type} texture found for material '{material.name}'")
@@ -478,39 +458,6 @@ class RunAtlas(Operator):
             nparray_to_img(atlas_images[tex_type], pixels)
 
         return material_uv_mapping
-    
-    def _find_texture_for_type(self, material, tex_type):
-        """Find the appropriate texture image for a given texture type from material"""
-        if not material.use_nodes:
-            return None
-        
-        for node in material.node_tree.nodes:
-            if node.type == 'TEX_IMAGE' and node.image:
-                node_name_lower = node.image.name.lower()
-                if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
-                    return node.image
-        
-        links = material.node_tree.links
-        socket_mapping = {
-            'diffuse': 'Base Color',
-            'roughness': 'Roughness',
-            'alpha': 'Alpha'
-        }
-        
-        if tex_type in socket_mapping:
-            for node in material.node_tree.nodes:
-                if node.type != 'TEX_IMAGE' or not node.image:
-                    continue
-                if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
-                    return node.image
-        elif tex_type == 'normal':
-            for node in material.node_tree.nodes:
-                if node.type != 'TEX_IMAGE' or not node.image:
-                    continue
-                if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
-                    return node.image
-        
-        return None
     
     def _create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
         """Create material with atlas textures"""
@@ -573,121 +520,65 @@ class RunAtlas(Operator):
         return atlas_material
     
     def copy_texture_to_atlas(self, source_image, atlas_pixels, dest_x, dest_y, width, height, tex_type, uv_bounds, alpha_image=None):
-        """Copy source texture into atlas at specified position, cropping to UV bounds
-        
-        Args:
-            source_image: Source texture to copy
-            atlas_pixels: Target atlas buffer
-            dest_x, dest_y: Destination position in atlas
-            width, height: Size of the area to copy
-            tex_type: Type of texture ('diffuse', 'normal', 'roughness', 'alpha')
-            uv_bounds: UV bounds to crop from source
-            alpha_image: Optional alpha texture to pack into diffuse's alpha channel
-        """
+        """Copy source texture into atlas at specified position, cropping to UV bounds"""
         source_width, source_height = source_image.size
         min_u, min_v, max_u, max_v = uv_bounds
         atlas_height, atlas_width = atlas_pixels.shape[:2]
 
-        source_pixels = img_as_nparray(source_image)
-
-        crop_x_start, crop_x_end, crop_y_start, crop_y_end = _uv_bounds_to_pixels(
-            uv_bounds, (source_width, source_height)
-        )
-        
-        cropped_pixels = source_pixels[crop_y_start:crop_y_end, crop_x_start:crop_x_end, :]
-        cropped_height, cropped_width = cropped_pixels.shape[:2]
+        # Crop to UV bounds
+        crop_x_start, crop_x_end, crop_y_start, crop_y_end = _uv_bounds_to_pixels(uv_bounds, (source_width, source_height))
+        source_pixels = img_as_nparray(source_image)[crop_y_start:crop_y_end, crop_x_start:crop_x_end, :]
+        cropped_height, cropped_width = source_pixels.shape[:2]
         
         if cropped_width == 0 or cropped_height == 0:
             logger.warning(f"Cropped texture has zero size, skipping")
             return
         
-        source_pixels = cropped_pixels
-        source_width = cropped_width
-        source_height = cropped_height
+        logger.debug(f"Cropped texture from UV ({min_u:.2f}, {min_v:.2f}) to ({max_u:.2f}, {max_v:.2f}): {cropped_width}x{cropped_height}")
         
-        logger.debug(f"Cropped texture from UV ({min_u:.2f}, {min_v:.2f}) to ({max_u:.2f}, {max_v:.2f}): {source_width}x{source_height}")
-        
+        # Handle special texture type processing
         if tex_type == 'alpha':
             alpha_channel = source_pixels[:, :, 3:4]
-            source_pixels = np.concatenate([alpha_channel, alpha_channel, alpha_channel, np.ones_like(alpha_channel)], axis=2)
+            source_pixels = np.concatenate([alpha_channel] * 3 + [np.ones_like(alpha_channel)], axis=2)
+        elif tex_type == 'diffuse' and alpha_image:
+            logger.info(f"Packing alpha channel into diffuse texture")
+            alpha_crop = _uv_bounds_to_pixels(uv_bounds, (alpha_image.size[0], alpha_image.size[1]))
+            alpha_cropped = img_as_nparray(alpha_image)[alpha_crop[2]:alpha_crop[3], alpha_crop[0]:alpha_crop[1], :]
+            
+            if alpha_cropped.shape[:2] != source_pixels.shape[:2]:
+                alpha_cropped = self._bilinear_resize(alpha_cropped, cropped_width, cropped_height, alpha_cropped.shape[1], alpha_cropped.shape[0])
+            
+            source_pixels[:, :, 3] = alpha_cropped[:, :, 3]
         elif tex_type == 'diffuse':
-            # If we have an alpha texture and we're packing, extract its alpha channel
-            if alpha_image and alpha_image.has_data:
-                logger.info(f"Packing alpha channel into diffuse texture")
-                alpha_pixels = img_as_nparray(alpha_image)
-                alpha_crop_x_start, alpha_crop_x_end, alpha_crop_y_start, alpha_crop_y_end = _uv_bounds_to_pixels(
-                    uv_bounds, (alpha_image.size[0], alpha_image.size[1])
-                )
-                alpha_cropped = alpha_pixels[alpha_crop_y_start:alpha_crop_y_end, alpha_crop_x_start:alpha_crop_x_end, :]
-                
-                # Resize alpha if needed to match diffuse dimensions
-                if alpha_cropped.shape[:2] != source_pixels.shape[:2]:
-                    alpha_cropped = self._bilinear_resize(
-                        alpha_cropped, 
-                        source_width, 
-                        source_height,
-                        alpha_cropped.shape[1], 
-                        alpha_cropped.shape[0]
-                    )
-                
-                # Use the alpha channel from the alpha texture
-                source_pixels[:, :, 3] = alpha_cropped[:, :, 3]
-            else:
-                # No alpha texture, set alpha to 1.0
-                source_pixels[:, :, 3] = 1.0
+            source_pixels[:, :, 3] = 1.0
         
-        if source_width != width or source_height != height:
-            logger.info(f"Resizing texture from {source_width}x{source_height} to {width}x{height}")
-            
-            if source_width > width or source_height > height:
-                logger.debug(f"Downscaling texture to fit allocated space")
-            else:
+        # Resize if needed
+        if cropped_width != width or cropped_height != height:
+            resize_type = "Downscaling" if (cropped_width > width or cropped_height > height) else "Upscaling"
+            logger.info(f"{resize_type} texture from {cropped_width}x{cropped_height} to {width}x{height}")
+            if resize_type == "Upscaling":
                 logger.warning(f"Upscaling texture - may indicate packing inefficiency")
-            
-            source_pixels = self._bilinear_resize(source_pixels, width, height, source_width, source_height)
-            source_height = height
-            source_width = width
+            source_pixels = self._bilinear_resize(source_pixels, width, height, cropped_width, cropped_height)
         
-        x0 = max(dest_x, 0)
-        y0 = max(dest_y, 0)
-        x1 = min(dest_x + width, atlas_width)
-        y1 = min(dest_y + height, atlas_height)
-        if x1 <= x0 or y1 <= y0:
-            return
-
-        sx0 = x0 - dest_x
-        sy0 = y0 - dest_y
-        sx1 = sx0 + (x1 - x0)
-        sy1 = sy0 + (y1 - y0)
-
-        ay_start = dest_y + sy0
-        ay_end = dest_y + sy1
-
-        atlas_pixels[ay_start:ay_end, x0:x1, :] = source_pixels[sy0:sy1, sx0:sx1, :]
+        # Calculate clipped bounds and copy
+        x0, y0 = max(dest_x, 0), max(dest_y, 0)
+        x1, y1 = min(dest_x + width, atlas_width), min(dest_y + height, atlas_height)
+        
+        if x1 > x0 and y1 > y0:
+            sx0, sy0 = x0 - dest_x, y0 - dest_y
+            atlas_pixels[dest_y + sy0:dest_y + sy0 + (y1 - y0), x0:x1, :] = source_pixels[sy0:sy0 + (y1 - y0), sx0:sx0 + (x1 - x0), :]
     
     def _bilinear_resize(self, source_pixels, width, height, source_width, source_height):
         """Resize image using bilinear interpolation"""
-        x_ratio = source_width / width
-        y_ratio = source_height / height
-        xs = np.arange(width, dtype=np.float32) * x_ratio
-        ys = np.arange(height, dtype=np.float32) * y_ratio
+        x_ratio, y_ratio = source_width / width, source_height / height
+        xs, ys = np.arange(width, dtype=np.float32) * x_ratio, np.arange(height, dtype=np.float32) * y_ratio
+        x0, y0 = np.floor(xs).astype(np.int32), np.floor(ys).astype(np.int32)
+        x1, y1 = np.clip(x0 + 1, 0, source_width - 1), np.clip(y0 + 1, 0, source_height - 1)
+        wx, wy = (xs - x0)[None, :, None], (ys - y0)[:, None, None]
 
-        x0 = np.floor(xs).astype(np.int32)
-        y0 = np.floor(ys).astype(np.int32)
-        x1 = np.clip(x0 + 1, 0, source_width - 1)
-        y1 = np.clip(y0 + 1, 0, source_height - 1)
-
-        wx = (xs - x0)[None, :, None]
-        wy = (ys - y0)[:, None, None]
-
-        TL = source_pixels[y0[:, None], x0[None, :], :]
-        TR = source_pixels[y0[:, None], x1[None, :], :]
-        BL = source_pixels[y1[:, None], x0[None, :], :]
-        BR = source_pixels[y1[:, None], x1[None, :], :]
-
-        top = TL * (1.0 - wx) + TR * wx
-        bottom = BL * (1.0 - wx) + BR * wx
-        return top * (1.0 - wy) + bottom * wy
+        TL, TR = source_pixels[y0[:, None], x0[None, :], :], source_pixels[y0[:, None], x1[None, :], :]
+        BL, BR = source_pixels[y1[:, None], x0[None, :], :], source_pixels[y1[:, None], x1[None, :], :]
+        return (TL * (1.0 - wx) + TR * wx) * (1.0 - wy) + (BL * (1.0 - wx) + BR * wx) * wy
     
     def update_uvs_for_atlas(self, mesh_obj, material_uv_mapping):
         """Update UV coordinates to map to atlas tiles"""

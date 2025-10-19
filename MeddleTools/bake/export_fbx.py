@@ -49,6 +49,15 @@ class ExportFBX(Operator):
             mesh_objects = [obj for obj in selected_objects if obj.type == 'MESH']
             armature_objects = [obj for obj in selected_objects if obj.type == 'ARMATURE']
             
+            # If armatures are selected, include their child meshes
+            for armature in armature_objects:
+                for obj in bpy.data.objects:
+                    if obj.type == 'MESH' and obj.parent == armature:
+                        if obj not in mesh_objects and obj not in selected_objects:
+                            selected_objects.append(obj)
+                        if obj not in mesh_objects:
+                            mesh_objects.append(obj)
+            
             if not mesh_objects and not armature_objects:
                 self.report({'ERROR'}, "No mesh or armature objects selected")
                 return {'CANCELLED'}
