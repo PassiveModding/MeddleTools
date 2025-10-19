@@ -1,11 +1,8 @@
 import bpy
 import logging
 from bpy.types import Operator
-import bmesh
-from mathutils import Vector
 import math
 import numpy as np
-import os
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -110,7 +107,7 @@ class RunAtlas(Operator):
         
         # Determine atlas resolution (find max texture size from all materials)
         max_texture_size = 1024
-        texture_types = ['diffuse', 'normal', 'roughness']
+        texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
         
         for material in materials:
             if not material.use_nodes:
@@ -145,11 +142,14 @@ class RunAtlas(Operator):
                 atlas_image.colorspace_settings.name = 'Non-Color'
             elif tex_type == 'roughness':
                 atlas_image.colorspace_settings.name = 'Non-Color'
+            elif tex_type == 'alpha':
+                atlas_image.colorspace_settings.name = 'Non-Color'
             
             # Initialize with default colors
             rgba = np.zeros((atlas_height, atlas_width, 4), dtype=np.float32)
             if tex_type == 'diffuse':
-                rgba[:, :, 3] = 1.0  # Alpha channel 1.0
+                # Diffuse always has opaque alpha
+                rgba[:, :, 3] = 1.0
             elif tex_type == 'normal':
                 rgba[:, :, 0] = 0.5  # R
                 rgba[:, :, 1] = 0.5  # G
@@ -160,6 +160,9 @@ class RunAtlas(Operator):
                 rgba[:, :, 1] = 0.5
                 rgba[:, :, 2] = 0.5
                 rgba[:, :, 3] = 1.0
+            elif tex_type == 'alpha':
+                # Default alpha is fully opaque (white)
+                rgba[:, :, :] = 1.0
 
             nparray_to_img(atlas_image, rgba)
             atlas_images[tex_type] = atlas_image
@@ -213,6 +216,10 @@ class RunAtlas(Operator):
                                 if any(l.to_socket.name == 'Roughness' and l.from_node == node for l in links):
                                     source_image = node.image
                                     break
+                            elif tex_type == 'alpha':
+                                if any(l.to_socket.name == 'Alpha' and l.from_node == node for l in links):
+                                    source_image = node.image
+                                    break
 
                 if not source_image or not source_image.has_data:
                     logger.debug(f"No {tex_type} texture found for material '{material.name}', leaving tile blank.")
@@ -225,7 +232,8 @@ class RunAtlas(Operator):
                         tile_col * tile_size,
                         tile_row * tile_size,
                         tile_size,
-                        tile_size
+                        tile_size,
+                        tex_type
                     )
                 except Exception as e:
                     logger.exception(f"Failed copying {tex_type} for material '{material.name}': {e}")
@@ -255,8 +263,13 @@ class RunAtlas(Operator):
         # Create image texture nodes
         diffuse_tex = nodes.new('ShaderNodeTexImage')
         diffuse_tex.image = atlas_images['diffuse']
-        diffuse_tex.location = (-400, 200)
+        diffuse_tex.location = (-400, 300)
         diffuse_tex.label = "Atlas Diffuse"
+        
+        alpha_tex = nodes.new('ShaderNodeTexImage')
+        alpha_tex.image = atlas_images['alpha']
+        alpha_tex.location = (-400, 100)
+        alpha_tex.label = "Atlas Alpha"
         
         normal_tex = nodes.new('ShaderNodeTexImage')
         normal_tex.image = atlas_images['normal']
@@ -265,7 +278,7 @@ class RunAtlas(Operator):
         
         roughness_tex = nodes.new('ShaderNodeTexImage')
         roughness_tex.image = atlas_images['roughness']
-        roughness_tex.location = (-400, -400)
+        roughness_tex.location = (-400, -300)
         roughness_tex.label = "Atlas Roughness"
         
         # Create normal map node
@@ -274,7 +287,7 @@ class RunAtlas(Operator):
         
         # Link nodes
         links.new(diffuse_tex.outputs['Color'], bsdf_node.inputs['Base Color'])
-        links.new(diffuse_tex.outputs['Alpha'], bsdf_node.inputs['Alpha'])
+        links.new(alpha_tex.outputs['Color'], bsdf_node.inputs['Alpha'])  # Use alpha texture for transparency
         links.new(roughness_tex.outputs['Color'], bsdf_node.inputs['Roughness'])
         links.new(normal_tex.outputs['Color'], normal_map.inputs['Color'])
         links.new(normal_map.outputs['Normal'], bsdf_node.inputs['Normal'])
@@ -294,7 +307,7 @@ class RunAtlas(Operator):
         
         return atlas_material
     
-    def copy_texture_to_atlas(self, source_image, atlas_image, dest_x, dest_y, width, height):
+    def copy_texture_to_atlas(self, source_image, atlas_image, dest_x, dest_y, width, height, tex_type):
         """Copy a source texture into the atlas at the specified position"""
         # Read source and atlas pixels as (H, W, 4) arrays
         source_width = source_image.size[0]
@@ -305,6 +318,16 @@ class RunAtlas(Operator):
         # Get pixel data in (height, width, 4) format
         source_pixels = img_as_nparray(source_image)
         atlas_pixels = img_as_nparray(atlas_image)
+        
+        # For alpha texture type, extract alpha channel to RGB
+        if tex_type == 'alpha':
+            # Copy alpha channel to RGB channels
+            alpha_channel = source_pixels[:, :, 3:4]  # Keep dims (H, W, 1)
+            source_pixels = np.concatenate([alpha_channel, alpha_channel, alpha_channel, np.ones_like(alpha_channel)], axis=2)
+        
+        # For diffuse texture type, force alpha to 1.0
+        if tex_type == 'diffuse':
+            source_pixels[:, :, 3] = 1.0
         
         # Resize source if needed using vectorized bilinear interpolation
         if source_width != width or source_height != height:
