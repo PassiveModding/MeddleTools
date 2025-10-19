@@ -1,6 +1,7 @@
 import bpy
 from .bake import RunBake
 from .atlas import RunAtlas
+from .export_fbx import ExportFBX
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -30,4 +31,16 @@ class MeddleBakePanel(bpy.types.Panel):
         row.label(text="Texture Atlas", icon='TEXTURE')
         
         row = layout.row()
+        row.prop(context.scene.meddle_settings, "pack_alpha")
+        
+        row = layout.row()
         row.operator(RunAtlas.bl_idname, text="Create Atlas from Selection")
+        
+        # Separator for export section
+        layout.separator()
+        
+        row = layout.row()
+        row.label(text="Export", icon='EXPORT')
+        
+        row = layout.row()
+        row.operator(ExportFBX.bl_idname, text="Export FBX with Textures")

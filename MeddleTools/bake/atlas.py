@@ -181,6 +181,7 @@ class RunAtlas(Operator):
             has_texture = False
             refined_bounds = initial_uv_bounds
             texture_types_found = {t: None for t in texture_types}
+            island_packing = None
             
             if material.use_nodes:
                 for node in material.node_tree.nodes:
@@ -334,7 +335,16 @@ class RunAtlas(Operator):
         num_materials = len(materials)
         self.report({'INFO'}, f"Creating atlas from {num_materials} material(s)...")
         
-        texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
+        # Check if alpha should be packed into diffuse
+        pack_alpha = context.scene.meddle_settings.pack_alpha
+        
+        # Determine texture types based on pack_alpha setting
+        if pack_alpha:
+            texture_types = ['diffuse', 'normal', 'roughness']
+            logger.info("Pack alpha enabled - alpha will be packed into diffuse texture")
+        else:
+            texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
+            logger.info("Pack alpha disabled - separate alpha texture will be created")
         
         material_info = self.analyze_material_sizes(materials, texture_types, joined_mesh.data)
         atlas_layout = self.calculate_atlas_layout(material_info)
@@ -345,10 +355,10 @@ class RunAtlas(Operator):
         self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
         atlas_images = self._create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
-        material_uv_mapping = self._copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types)
+        material_uv_mapping = self._copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha)
         
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
-        atlas_material = self._create_atlas_material(atlas_name, atlas_images)
+        atlas_material = self._create_atlas_material(atlas_name, atlas_images, pack_alpha)
         
         joined_mesh.data.materials.clear()
         joined_mesh.data.materials.append(atlas_material)
@@ -398,7 +408,7 @@ class RunAtlas(Operator):
         
         return atlas_images
     
-    def _copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types):
+    def _copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha):
         """Copy material textures into atlas and build UV mapping"""
         material_uv_mapping = {}
         material_info_by_idx = {info['index']: info for info in material_info}
@@ -434,6 +444,11 @@ class RunAtlas(Operator):
 
             logger.info(f"Material {mat_idx} ({material.name}) -> pos ({tile_x}, {tile_y}) size ({tile_w}x{tile_h})")
 
+            # Handle alpha texture separately if pack_alpha is enabled
+            alpha_source = None
+            if pack_alpha:
+                alpha_source = self._find_texture_for_type(material, 'alpha')
+
             for tex_type in texture_types:
                 source_image = self._find_texture_for_type(material, tex_type)
                 
@@ -442,6 +457,9 @@ class RunAtlas(Operator):
                     continue
 
                 try:
+                    # Pass alpha source if we're packing alpha into diffuse
+                    alpha_img = alpha_source if (pack_alpha and tex_type == 'diffuse') else None
+                    
                     self.copy_texture_to_atlas(
                         source_image,
                         atlas_buffers[tex_type],
@@ -450,7 +468,8 @@ class RunAtlas(Operator):
                         tile_w,
                         tile_h,
                         tex_type,
-                        uv_bounds
+                        uv_bounds,
+                        alpha_img
                     )
                 except Exception as e:
                     logger.exception(f"Failed copying {tex_type} for material '{material.name}': {e}")
@@ -493,7 +512,7 @@ class RunAtlas(Operator):
         
         return None
     
-    def _create_atlas_material(self, atlas_name, atlas_images):
+    def _create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
         """Create material with atlas textures"""
         atlas_material = bpy.data.materials.new(name=atlas_name)
         atlas_material.use_nodes = True
@@ -510,12 +529,20 @@ class RunAtlas(Operator):
         bsdf_node.inputs['IOR'].default_value = 1.0
         bsdf_node.inputs['Metallic'].default_value = 0.0
         
-        texture_configs = [
-            ('diffuse', (-400, 300), 'Atlas Diffuse'),
-            ('alpha', (-400, 100), 'Atlas Alpha'),
-            ('normal', (-400, -100), 'Atlas Normal'),
-            ('roughness', (-400, -300), 'Atlas Roughness')
-        ]
+        # Configure texture nodes based on pack_alpha setting
+        if pack_alpha:
+            texture_configs = [
+                ('diffuse', (-400, 300), 'Atlas Diffuse'),
+                ('normal', (-400, 0), 'Atlas Normal'),
+                ('roughness', (-400, -300), 'Atlas Roughness')
+            ]
+        else:
+            texture_configs = [
+                ('diffuse', (-400, 300), 'Atlas Diffuse'),
+                ('alpha', (-400, 100), 'Atlas Alpha'),
+                ('normal', (-400, -100), 'Atlas Normal'),
+                ('roughness', (-400, -300), 'Atlas Roughness')
+            ]
         
         texture_nodes = {}
         for tex_type, location, label in texture_configs:
@@ -528,8 +555,16 @@ class RunAtlas(Operator):
         normal_map = nodes.new('ShaderNodeNormalMap')
         normal_map.location = (-100, -100)
         
+        # Connect nodes
         links.new(texture_nodes['diffuse'].outputs['Color'], bsdf_node.inputs['Base Color'])
-        links.new(texture_nodes['alpha'].outputs['Color'], bsdf_node.inputs['Alpha'])
+        
+        if pack_alpha:
+            # When packing, use diffuse's alpha channel
+            links.new(texture_nodes['diffuse'].outputs['Alpha'], bsdf_node.inputs['Alpha'])
+        else:
+            # When not packing, use separate alpha texture
+            links.new(texture_nodes['alpha'].outputs['Color'], bsdf_node.inputs['Alpha'])
+        
         links.new(texture_nodes['roughness'].outputs['Color'], bsdf_node.inputs['Roughness'])
         links.new(texture_nodes['normal'].outputs['Color'], normal_map.inputs['Color'])
         links.new(normal_map.outputs['Normal'], bsdf_node.inputs['Normal'])
@@ -537,8 +572,18 @@ class RunAtlas(Operator):
         
         return atlas_material
     
-    def copy_texture_to_atlas(self, source_image, atlas_pixels, dest_x, dest_y, width, height, tex_type, uv_bounds):
-        """Copy source texture into atlas at specified position, cropping to UV bounds"""
+    def copy_texture_to_atlas(self, source_image, atlas_pixels, dest_x, dest_y, width, height, tex_type, uv_bounds, alpha_image=None):
+        """Copy source texture into atlas at specified position, cropping to UV bounds
+        
+        Args:
+            source_image: Source texture to copy
+            atlas_pixels: Target atlas buffer
+            dest_x, dest_y: Destination position in atlas
+            width, height: Size of the area to copy
+            tex_type: Type of texture ('diffuse', 'normal', 'roughness', 'alpha')
+            uv_bounds: UV bounds to crop from source
+            alpha_image: Optional alpha texture to pack into diffuse's alpha channel
+        """
         source_width, source_height = source_image.size
         min_u, min_v, max_u, max_v = uv_bounds
         atlas_height, atlas_width = atlas_pixels.shape[:2]
@@ -566,7 +611,30 @@ class RunAtlas(Operator):
             alpha_channel = source_pixels[:, :, 3:4]
             source_pixels = np.concatenate([alpha_channel, alpha_channel, alpha_channel, np.ones_like(alpha_channel)], axis=2)
         elif tex_type == 'diffuse':
-            source_pixels[:, :, 3] = 1.0
+            # If we have an alpha texture and we're packing, extract its alpha channel
+            if alpha_image and alpha_image.has_data:
+                logger.info(f"Packing alpha channel into diffuse texture")
+                alpha_pixels = img_as_nparray(alpha_image)
+                alpha_crop_x_start, alpha_crop_x_end, alpha_crop_y_start, alpha_crop_y_end = _uv_bounds_to_pixels(
+                    uv_bounds, (alpha_image.size[0], alpha_image.size[1])
+                )
+                alpha_cropped = alpha_pixels[alpha_crop_y_start:alpha_crop_y_end, alpha_crop_x_start:alpha_crop_x_end, :]
+                
+                # Resize alpha if needed to match diffuse dimensions
+                if alpha_cropped.shape[:2] != source_pixels.shape[:2]:
+                    alpha_cropped = self._bilinear_resize(
+                        alpha_cropped, 
+                        source_width, 
+                        source_height,
+                        alpha_cropped.shape[1], 
+                        alpha_cropped.shape[0]
+                    )
+                
+                # Use the alpha channel from the alpha texture
+                source_pixels[:, :, 3] = alpha_cropped[:, :, 3]
+            else:
+                # No alpha texture, set alpha to 1.0
+                source_pixels[:, :, 3] = 1.0
         
         if source_width != width or source_height != height:
             logger.info(f"Resizing texture from {source_width}x{source_height} to {width}x{height}")

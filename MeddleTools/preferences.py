@@ -52,6 +52,12 @@ class MeddleSettings(bpy.types.PropertyGroup):
         max=4096
     )
     
+    pack_alpha: bpy.props.BoolProperty(
+        name="Pack Alpha",
+        description="Pack alpha channel into diffuse texture's alpha channel instead of creating a separate alpha texture",
+        default=True
+    )
+    
 def register():
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)
