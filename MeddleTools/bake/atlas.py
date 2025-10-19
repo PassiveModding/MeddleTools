@@ -84,6 +84,244 @@ class RunAtlas(Operator):
             self.report({'ERROR'}, "Failed to create texture atlas")
             return {'CANCELLED'}
     
+    def analyze_material_sizes(self, materials, texture_types, mesh):
+        """Analyze all materials to determine their texture sizes and UV bounds"""
+        material_info = []
+        
+        # First, determine which materials are actually used and calculate UV bounds
+        material_uv_bounds = {}  # mat_idx -> (min_u, min_v, max_u, max_v)
+        
+        # Get UV layer
+        uv_layer = mesh.uv_layers.get("UVMap")
+        if not uv_layer:
+            logger.warning("No UVMap found on mesh, cannot calculate UV bounds")
+            # Fall back to full UV range for all materials
+            for mat_idx in range(len(materials)):
+                material_uv_bounds[mat_idx] = (0.0, 0.0, 1.0, 1.0)
+        else:
+            # Initialize bounds for each material
+            for mat_idx in range(len(materials)):
+                material_uv_bounds[mat_idx] = None
+            
+            # Scan all polygons to find UV bounds per material
+            for poly in mesh.polygons:
+                mat_idx = poly.material_index
+                
+                # Get UV coordinates for this polygon
+                for loop_idx in poly.loop_indices:
+                    uv = uv_layer.data[loop_idx].uv
+                    
+                    if material_uv_bounds[mat_idx] is None:
+                        # First UV for this material
+                        material_uv_bounds[mat_idx] = (uv.x, uv.y, uv.x, uv.y)
+                    else:
+                        # Expand bounds
+                        min_u, min_v, max_u, max_v = material_uv_bounds[mat_idx]
+                        material_uv_bounds[mat_idx] = (
+                            min(min_u, uv.x),
+                            min(min_v, uv.y),
+                            max(max_u, uv.x),
+                            max(max_v, uv.y)
+                        )
+        
+        logger.info(f"Calculated UV bounds for {len(materials)} materials")
+        
+        for mat_idx, material in enumerate(materials):
+            # Skip materials not used by any polygon (no UV bounds)
+            if material_uv_bounds[mat_idx] is None:
+                logger.info(f"Skipping material {mat_idx} ({material.name}): not used by any polygon")
+                continue
+            
+            # Get UV bounds
+            min_u, min_v, max_u, max_v = material_uv_bounds[mat_idx]
+            uv_width = max_u - min_u
+            uv_height = max_v - min_v
+            
+            # Clamp to reasonable values (avoid degenerate cases)
+            uv_width = max(uv_width, 0.01)
+            uv_height = max(uv_height, 0.01)
+            
+            # Find the representative texture size for this material
+            # Use the ACTUAL texture size from the images, not theoretical max
+            actual_tex_width = None
+            actual_tex_height = None
+            has_texture = False
+            
+            if material.use_nodes:
+                for node in material.node_tree.nodes:
+                    if node.type == 'TEX_IMAGE' and node.image and node.image.has_data:
+                        has_texture = True
+                        img_width = node.image.size[0]
+                        img_height = node.image.size[1]
+                        # Use the actual texture size (could be smaller than 1024 if baked at lower res)
+                        if actual_tex_width is None or (img_width * img_height > actual_tex_width * actual_tex_height):
+                            actual_tex_width = img_width
+                            actual_tex_height = img_height
+            
+            # If no texture found, use defaults
+            if actual_tex_width is None:
+                actual_tex_width = 1024
+                actual_tex_height = 1024
+            
+            # Calculate actual cropped pixel region size from the ACTUAL texture dimensions
+            crop_x_start = int(min_u * actual_tex_width)
+            crop_x_end = int(max_u * actual_tex_width)
+            crop_y_start = int(min_v * actual_tex_height)
+            crop_y_end = int(max_v * actual_tex_height)
+            
+            # Actual cropped dimensions in pixels
+            crop_width = crop_x_end - crop_x_start
+            crop_height = crop_y_end - crop_y_start
+            
+            # Ensure minimum size
+            crop_width = max(crop_width, 16)
+            crop_height = max(crop_height, 16)
+            
+            material_info.append({
+                'index': mat_idx,
+                'material': material,
+                'width': crop_width,
+                'height': crop_height,
+                'has_texture': has_texture,
+                'uv_bounds': material_uv_bounds[mat_idx],
+                'texture_size': (actual_tex_width, actual_tex_height)
+            })
+            
+            logger.info(f"Material {mat_idx} ({material.name}): {crop_width}x{crop_height} pixels (actual texture: {actual_tex_width}x{actual_tex_height}, UV coverage: {uv_width:.2f}x{uv_height:.2f})")
+        
+        return material_info
+    
+    def calculate_atlas_layout(self, material_info):
+        """
+        Calculate an efficient atlas layout that packs materials by their actual cropped sizes.
+        
+        This uses a skyline packing algorithm that:
+        - Packs textures at their actual pixel dimensions (no forced resizing)
+        - Places larger textures first for better space utilization
+        - Allows smaller textures to fill gaps in shelves
+        - Handles mixed aspect ratios efficiently
+        """
+        # Sort materials by area (largest first) for better packing efficiency
+        sorted_materials = sorted(material_info, key=lambda x: x['width'] * x['height'], reverse=True)
+        
+        logger.info(f"Packing {len(sorted_materials)} materials at their actual sizes")
+        
+        # Use a simple but effective skyline/shelf packing algorithm
+        # This handles mixed aspect ratios much better than simple grouping
+        placements = {}
+        
+        # Track shelves (horizontal strips)
+        # Each shelf: {'y': int, 'height': int, 'segments': [(x_start, x_end)]}
+        shelves = []
+        atlas_width = 0
+        atlas_height = 0
+        
+        for info in sorted_materials:
+            # Use the actual cropped texture dimensions
+            width = info['width']
+            height = info['height']
+            mat_idx = info['index']
+            
+            # Try to find a spot in existing shelves
+            placed = False
+            best_shelf = None
+            best_x = None
+            best_waste = float('inf')
+            
+            # Look for best fit in existing shelves
+            for shelf in shelves:
+                shelf_y = shelf['y']
+                shelf_height = shelf['height']
+                
+                # Can only place if height fits
+                if height <= shelf_height:
+                    # Find a gap in this shelf that fits our width
+                    segments = shelf['segments']
+                    
+                    for i, (seg_start, seg_end) in enumerate(segments):
+                        seg_width = seg_end - seg_start
+                        
+                        if seg_width >= width:
+                            # This segment can fit our material
+                            # Calculate waste (height difference in shelf)
+                            waste = shelf_height - height
+                            
+                            if waste < best_waste:
+                                best_waste = waste
+                                best_shelf = shelf
+                                best_x = seg_start
+                                placed = True
+                            break  # Only use first fitting segment per shelf
+            
+            # If we found a good spot, place it
+            if placed and best_shelf is not None:
+                # Place in the best shelf
+                shelf_y = best_shelf['y']
+                
+                # Update segments to mark this space as used
+                new_segments = []
+                for seg_start, seg_end in best_shelf['segments']:
+                    if seg_start == best_x:
+                        # Split this segment
+                        if seg_start + width < seg_end:
+                            # There's remaining space after our material
+                            new_segments.append((seg_start + width, seg_end))
+                    else:
+                        # Keep segment as-is
+                        new_segments.append((seg_start, seg_end))
+                
+                best_shelf['segments'] = new_segments
+                
+                placements[mat_idx] = {
+                    'x': best_x,
+                    'y': shelf_y,
+                    'width': width,
+                    'height': height
+                }
+                
+                atlas_width = max(atlas_width, best_x + width)
+                
+            else:
+                # Create a new shelf at the bottom
+                new_shelf_y = atlas_height
+                
+                placements[mat_idx] = {
+                    'x': 0,
+                    'y': new_shelf_y,
+                    'width': width,
+                    'height': height
+                }
+                
+                # Create new shelf
+                shelves.append({
+                    'y': new_shelf_y,
+                    'height': height,
+                    'segments': [(width, atlas_width)] if width < atlas_width else []
+                })
+                
+                atlas_width = max(atlas_width, width)
+                atlas_height = new_shelf_y + height
+            
+            logger.debug(f"Placed material {mat_idx} ({width}x{height}) at ({placements[mat_idx]['x']}, {placements[mat_idx]['y']})")
+        
+        # Ensure minimum size
+        atlas_width = max(atlas_width, 64)
+        atlas_height = max(atlas_height, 64)
+        
+        # Calculate packing efficiency
+        total_material_area = sum(info['width'] * info['height'] for info in material_info)
+        atlas_area = atlas_width * atlas_height
+        efficiency = (total_material_area / atlas_area * 100) if atlas_area > 0 else 0
+        
+        logger.info(f"Calculated atlas size: {atlas_width}x{atlas_height}")
+        logger.info(f"Packing efficiency: {efficiency:.1f}% ({total_material_area}/{atlas_area})")
+        
+        return {
+            'width': atlas_width,
+            'height': atlas_height,
+            'placements': placements
+        }
+    
     def create_texture_atlas(self, context, joined_mesh, atlas_name):
         """Create a texture atlas from all materials on the mesh and update UVs"""
         logger.info(f"Creating texture atlas for mesh: {joined_mesh.name}")
@@ -98,32 +336,18 @@ class RunAtlas(Operator):
         num_materials = len(materials)
         self.report({'INFO'}, f"Creating atlas from {num_materials} material(s)...")
         
-        # Calculate optimal atlas layout
-        atlas_cols = math.ceil(math.sqrt(num_materials))
-        atlas_rows = math.ceil(num_materials / atlas_cols)
-        
-        logger.info(f"Atlas layout: {atlas_cols}x{atlas_rows} for {num_materials} materials")
-        self.report({'INFO'}, f"Atlas layout: {atlas_cols}x{atlas_rows} grid")
-        
-        # Determine atlas resolution (find max texture size from all materials)
-        max_texture_size = 1024
         texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
         
-        for material in materials:
-            if not material.use_nodes:
-                continue
-            for node in material.node_tree.nodes:
-                if node.type == 'TEX_IMAGE' and node.image:
-                    max_texture_size = max(max_texture_size, node.image.size[0], node.image.size[1])
+        # Analyze materials to determine texture sizes
+        material_info = self.analyze_material_sizes(materials, texture_types, joined_mesh.data)
         
-        # Atlas size per tile
-        tile_size = max_texture_size
-        atlas_width = tile_size * atlas_cols
-        atlas_height = tile_size * atlas_rows
+        # Calculate optimal atlas layout with size-based packing
+        atlas_layout = self.calculate_atlas_layout(material_info)
+        atlas_width = atlas_layout['width']
+        atlas_height = atlas_layout['height']
         
-        logger.info(f"Atlas resolution: {atlas_width}x{atlas_height} (tile size: {tile_size})")
-        
-        # ndarray helpers are defined at module scope
+        logger.info(f"Atlas resolution: {atlas_width}x{atlas_height}")
+        self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
         # Create atlas images for each texture type
         atlas_images = {}
@@ -167,23 +391,42 @@ class RunAtlas(Operator):
             nparray_to_img(atlas_image, rgba)
             atlas_images[tex_type] = atlas_image
         
-        # Build material-to-tile mapping and copy textures into atlas
-        material_uv_mapping = {}  # material_index -> (u_offset, v_offset, u_scale, v_scale)
+        # Build material-to-tile mapping and copy textures into atlas using the layout
+        material_uv_mapping = {}  # material_index -> (u_offset, v_offset, u_scale, v_scale, original_uv_bounds)
+        
+        # Create a lookup for material_info by index
+        material_info_by_idx = {info['index']: info for info in material_info}
 
         for mat_idx, material in enumerate(materials):
-            # Calculate tile position in atlas
-            tile_col = mat_idx % atlas_cols
-            tile_row = mat_idx // atlas_cols
+            # Get the layout position for this material
+            if mat_idx not in atlas_layout['placements']:
+                logger.warning(f"Material {mat_idx} has no placement in atlas layout")
+                continue
+            
+            # Get material info (contains UV bounds)
+            if mat_idx not in material_info_by_idx:
+                logger.warning(f"Material {mat_idx} has no material info")
+                continue
+            
+            mat_info = material_info_by_idx[mat_idx]
+            uv_bounds = mat_info['uv_bounds']  # (min_u, min_v, max_u, max_v)
+            
+            placement = atlas_layout['placements'][mat_idx]
+            tile_x = placement['x']
+            tile_y = placement['y']
+            tile_w = placement['width']
+            tile_h = placement['height']
 
             # UV offsets and scales for this tile
-            u_offset = tile_col / atlas_cols
-            v_offset = tile_row / atlas_rows
-            u_scale = 1.0 / atlas_cols
-            v_scale = 1.0 / atlas_rows
+            # Need to account for original UV bounds
+            u_offset = tile_x / atlas_width
+            v_offset = tile_y / atlas_height
+            u_scale = tile_w / atlas_width
+            v_scale = tile_h / atlas_height
 
-            material_uv_mapping[mat_idx] = (u_offset, v_offset, u_scale, v_scale)
+            material_uv_mapping[mat_idx] = (u_offset, v_offset, u_scale, v_scale, uv_bounds)
 
-            logger.info(f"Material {mat_idx} ({material.name}) -> tile ({tile_col}, {tile_row})")
+            logger.info(f"Material {mat_idx} ({material.name}) -> pos ({tile_x}, {tile_y}) size ({tile_w}x{tile_h})")
 
             # For each texture type, try to locate a matching source image in the material and copy it into the atlas
             for tex_type in texture_types:
@@ -229,11 +472,12 @@ class RunAtlas(Operator):
                     self.copy_texture_to_atlas(
                         source_image,
                         atlas_images[tex_type],
-                        tile_col * tile_size,
-                        tile_row * tile_size,
-                        tile_size,
-                        tile_size,
-                        tex_type
+                        tile_x,
+                        tile_y,
+                        tile_w,
+                        tile_h,
+                        tex_type,
+                        uv_bounds
                     )
                 except Exception as e:
                     logger.exception(f"Failed copying {tex_type} for material '{material.name}': {e}")
@@ -307,8 +551,8 @@ class RunAtlas(Operator):
         
         return atlas_material
     
-    def copy_texture_to_atlas(self, source_image, atlas_image, dest_x, dest_y, width, height, tex_type):
-        """Copy a source texture into the atlas at the specified position"""
+    def copy_texture_to_atlas(self, source_image, atlas_image, dest_x, dest_y, width, height, tex_type, uv_bounds):
+        """Copy a source texture into the atlas at the specified position, cropping to UV bounds"""
         # Read source and atlas pixels as (H, W, 4) arrays
         source_width = source_image.size[0]
         source_height = source_image.size[1]
@@ -318,6 +562,36 @@ class RunAtlas(Operator):
         # Get pixel data in (height, width, 4) format
         source_pixels = img_as_nparray(source_image)
         atlas_pixels = img_as_nparray(atlas_image)
+        
+        # Crop to UV bounds
+        # UV bounds are in UV space (0-1), convert to pixel coordinates
+        min_u, min_v, max_u, max_v = uv_bounds
+        
+        # Calculate pixel coordinates for cropping (remember V is flipped in image space)
+        crop_x_start = int(min_u * source_width)
+        crop_x_end = int(max_u * source_width)
+        crop_y_start = int(min_v * source_height)
+        crop_y_end = int(max_v * source_height)
+        
+        # Clamp to image bounds
+        crop_x_start = max(0, min(crop_x_start, source_width))
+        crop_x_end = max(0, min(crop_x_end, source_width))
+        crop_y_start = max(0, min(crop_y_start, source_height))
+        crop_y_end = max(0, min(crop_y_end, source_height))
+        
+        # Extract the cropped region
+        cropped_pixels = source_pixels[crop_y_start:crop_y_end, crop_x_start:crop_x_end, :]
+        cropped_height, cropped_width = cropped_pixels.shape[:2]
+        
+        if cropped_width == 0 or cropped_height == 0:
+            logger.warning(f"Cropped texture has zero size, skipping")
+            return
+        
+        source_pixels = cropped_pixels
+        source_width = cropped_width
+        source_height = cropped_height
+        
+        logger.debug(f"Cropped texture from UV bounds ({min_u:.2f}, {min_v:.2f}) to ({max_u:.2f}, {max_v:.2f}): {source_width}x{source_height}")
         
         # For alpha texture type, extract alpha channel to RGB
         if tex_type == 'alpha':
@@ -329,9 +603,18 @@ class RunAtlas(Operator):
         if tex_type == 'diffuse':
             source_pixels[:, :, 3] = 1.0
         
-        # Resize source if needed using vectorized bilinear interpolation
+        # Only resize if the cropped texture doesn't match the allocated atlas space
+        # This preserves original quality when possible
         if source_width != width or source_height != height:
             logger.info(f"Resizing texture from {source_width}x{source_height} to {width}x{height}")
+            
+            # Only resize if we need to fit into a smaller space or if sizes differ significantly
+            # Otherwise, we might be wasting space - log a warning
+            if source_width > width or source_height > height:
+                logger.debug(f"Downscaling texture to fit allocated space")
+            else:
+                logger.warning(f"Upscaling texture from {source_width}x{source_height} to {width}x{height} - may indicate packing inefficiency")
+            
             # Compute source sampling coordinates
             x_ratio = source_width / width
             y_ratio = source_height / height
@@ -400,14 +683,28 @@ class RunAtlas(Operator):
             if mat_idx not in material_uv_mapping:
                 continue
             
-            u_offset, v_offset, u_scale, v_scale = material_uv_mapping[mat_idx]
+            u_offset, v_offset, u_scale, v_scale, uv_bounds = material_uv_mapping[mat_idx]
+            min_u, min_v, max_u, max_v = uv_bounds
+            uv_range_u = max_u - min_u
+            uv_range_v = max_v - min_v
+            
+            # Avoid division by zero
+            if uv_range_u == 0:
+                uv_range_u = 1.0
+            if uv_range_v == 0:
+                uv_range_v = 1.0
             
             # Update UVs for all loops in this polygon
             for loop_idx in poly.loop_indices:
                 uv = uv_layer.data[loop_idx].uv
-                # Scale and offset UV to fit in the correct atlas tile
-                uv.x = uv.x * u_scale + u_offset
-                uv.y = uv.y * v_scale + v_offset
+                
+                # First, normalize UV to 0-1 range based on the original UV bounds
+                normalized_u = (uv.x - min_u) / uv_range_u
+                normalized_v = (uv.y - min_v) / uv_range_v
+                
+                # Then, scale and offset to fit in the correct atlas tile
+                uv.x = normalized_u * u_scale + u_offset
+                uv.y = normalized_v * v_scale + v_offset
         
         mesh.update()
         logger.info(f"UVs updated for {len(mesh.polygons)} polygons")
