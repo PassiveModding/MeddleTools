@@ -80,20 +80,20 @@ class RunBake(Operator):
             logger.info(f"Materials to bake: {materials}")
             
             # Create a collection for baked objects
-            self.update_progress(context, 5, f"Step 1/4: Creating bake collection...")
+            self.update_progress(context, 5, "Creating bake collection...")
             collection_name = f"BAKE_{armature.name if armature else 'Meshes'}"
             bake_collection = bpy.data.collections.new(collection_name)
             context.scene.collection.children.link(bake_collection)
             collection_name = bake_collection.name
             logger.info(f"Created collection: {collection_name}")
             
-            self.update_progress(context, 10, f"Step 2/4: Duplicating and processing {len(mesh_objects)} mesh(es)...")
+            self.update_progress(context, 10, f"Duplicating and processing {len(mesh_objects)} mesh(es)...")
             (armature_copy, mesh_copies, material_copies) = self.duplicateArmatureAndMeshes(context, armature, mesh_objects, materials, bake_collection)
             
             total_materials = len(material_copies)
             current_material = 0
             
-            self.update_progress(context, 20, f"Step 3/5: Baking {total_materials} material(s)...")
+            self.update_progress(context, 20, f"Baking {total_materials} material(s)...")
             for original_name, material_copy in material_copies.items():
                 current_material += 1
                 # get mesh copies using this material
@@ -104,21 +104,20 @@ class RunBake(Operator):
                     logger.info(f"Multiple meshes use material {original_name}, joining for baking.")
                     raise Exception("Should not reach here, joining handled in duplicateArmatureAndMeshes")
 
-                # Update progress: 20-85% for material baking
-                progress = 20 + int((current_material / total_materials) * 65)
+                progress = 20 + int((current_material / total_materials) * 50)
                 self.update_progress(context, progress, f"  Baking material {current_material}/{total_materials}: {original_name}...")
                 self.bakeMaterial(context, material_copy, meshes_using_material[0])
             
-            self.update_progress(context, 85, f"Step 4/5: Joining all meshes...")
+            self.update_progress(context, 70, "Joining all meshes...")
             # Join all meshes into one
             joined_mesh = self.join_all_meshes(context, mesh_copies, armature_copy)
             mesh_copies = [joined_mesh]  # Update mesh_copies to contain only the joined mesh
             
-            self.update_progress(context, 90, f"Step 5/6: Exporting FBX...")
+            self.update_progress(context, 85, "Exporting FBX...")
             # Export the baked collection to FBX
             fbx_path = self.export_to_fbx(context, bake_collection, collection_name, armature_copy, mesh_copies)
             
-            self.update_progress(context, 95, f"Step 6/6: Bake complete! Created collection: {collection_name}")
+            self.update_progress(context, 95, f"Bake complete! Created collection: {collection_name}")
             self.report({'INFO'}, f"Exported to: {fbx_path}")
 
             return {'FINISHED'}

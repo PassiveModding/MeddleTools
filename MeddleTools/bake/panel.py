@@ -1,5 +1,6 @@
 import bpy
-from . import RunBake
+from .bake import RunBake
+from .atlas import RunAtlas
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -21,3 +22,12 @@ class MeddleBakePanel(bpy.types.Panel):
         
         row = layout.row()        
         row.operator(RunBake.bl_idname, text="Run Bake")
+        
+        # Separator for atlas section
+        layout.separator()
+        
+        row = layout.row()
+        row.label(text="Texture Atlas", icon='TEXTURE')
+        
+        row = layout.row()
+        row.operator(RunAtlas.bl_idname, text="Create Atlas from Selection")
