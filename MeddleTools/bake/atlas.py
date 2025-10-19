@@ -262,37 +262,15 @@ class RunAtlas(Operator):
         return material_info
     
     def calculate_atlas_layout(self, material_info):
-        """Calculate efficient atlas layout using skyline packing algorithm"""
+        """Calculate efficient atlas layout using skyline packing algorithm with square optimization"""
         sorted_materials = sorted(material_info, key=lambda x: x['width'] * x['height'], reverse=True)
         logger.info(f"Packing {len(sorted_materials)} materials")
         
-        placements, shelves, atlas_height, max_used_width = {}, [], 0, 0
-        width_limit = max((info['width'] for info in sorted_materials), default=64)
-
-        for info in sorted_materials:
-            width, height, mat_idx = info['width'], info['height'], info['index']
-            width_limit = max(width_limit, width)
-            placement = None
-
-            # Try to fit on existing shelf
-            for shelf in shelves:
-                if height <= shelf['height'] and shelf['next_x'] + width <= width_limit:
-                    placement = {'x': shelf['next_x'], 'y': shelf['y'], 'width': width, 'height': height}
-                    shelf['next_x'] += width
-                    shelf['used_width'] = max(shelf['used_width'], shelf['next_x'])
-                    max_used_width = max(max_used_width, shelf['used_width'])
-                    break
-
-            # Create new shelf if needed
-            if placement is None:
-                placement = {'x': 0, 'y': atlas_height, 'width': width, 'height': height}
-                shelves.append({'y': atlas_height, 'height': height, 'next_x': width, 'used_width': width})
-                atlas_height += height
-                max_used_width = max(max_used_width, width)
-
-            placements[mat_idx] = placement
+        # Calculate total area and estimate square dimensions
+        total_area = sum(info['width'] * info['height'] for info in sorted_materials)
+        estimated_side = int(total_area ** 0.5)
         
-        # Round up to nearest power of 2
+        # Round up to nearest power of 2 for initial width estimate
         def next_power_of_2(n):
             """Round up to the nearest power of 2"""
             if n <= 0:
@@ -302,11 +280,49 @@ class RunAtlas(Operator):
                 power *= 2
             return power
         
+        # Start with a width that aims for a square, but at least as wide as the widest item
+        max_item_width = max((info['width'] for info in sorted_materials), default=64)
+        width_limit = max(next_power_of_2(estimated_side), max_item_width)
+        
+        logger.info(f"Target square size: ~{estimated_side}px, initial width limit: {width_limit}px")
+        
+        placements, shelves, atlas_height, max_used_width = {}, [], 0, 0
+
+        for info in sorted_materials:
+            width, height, mat_idx = info['width'], info['height'], info['index']
+            placement = None
+
+            # Try to fit on existing shelf - find best fit shelf
+            best_shelf = None
+            best_waste = float('inf')
+            
+            for shelf in shelves:
+                if height <= shelf['height'] and shelf['next_x'] + width <= width_limit:
+                    # Calculate wasted space (height difference)
+                    waste = shelf['height'] - height
+                    if waste < best_waste:
+                        best_waste = waste
+                        best_shelf = shelf
+            
+            if best_shelf is not None:
+                placement = {'x': best_shelf['next_x'], 'y': best_shelf['y'], 'width': width, 'height': height}
+                best_shelf['next_x'] += width
+                best_shelf['used_width'] = max(best_shelf['used_width'], best_shelf['next_x'])
+                max_used_width = max(max_used_width, best_shelf['next_x'])
+            else:
+                # Create new shelf if needed
+                placement = {'x': 0, 'y': atlas_height, 'width': width, 'height': height}
+                shelves.append({'y': atlas_height, 'height': height, 'next_x': width, 'used_width': width})
+                atlas_height += height
+                max_used_width = max(max_used_width, width)
+
+            placements[mat_idx] = placement
+        
         atlas_width = next_power_of_2(max(max_used_width, 64))
         atlas_height = next_power_of_2(max(atlas_height, 64))
-        total_area = sum(info['width'] * info['height'] for info in material_info)
         efficiency = (total_area / (atlas_width * atlas_height) * 100) if atlas_width * atlas_height > 0 else 0
-        logger.info(f"Atlas: {atlas_width}x{atlas_height}, efficiency: {efficiency:.1f}%")
+        aspect_ratio = atlas_width / atlas_height if atlas_height > 0 else 1.0
+        logger.info(f"Atlas: {atlas_width}x{atlas_height} (aspect: {aspect_ratio:.2f}:1), efficiency: {efficiency:.1f}%")
         
         return {'width': atlas_width, 'height': atlas_height, 'placements': placements}
     
