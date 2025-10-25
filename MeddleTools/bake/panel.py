@@ -2,6 +2,7 @@ import bpy
 from .bake import RunBake
 from .atlas import RunAtlas
 from .export_fbx import ExportFBX
+from .reproject_retile import ReprojectRetile
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -23,13 +24,22 @@ class MeddleBakePanel(bpy.types.Panel):
         
         row = layout.row()        
         row.operator(RunBake.bl_idname, text="Run Bake")
+        # if project is not saved, show message to save first
+        if not bpy.data.is_saved:
+            row = layout.row()
+            row.label(text="Please save the project before baking.", icon='ERROR')
         
         # Separator for atlas section
         layout.separator()
         
         row = layout.row()
+        
+        row = layout.row()
         row.label(text="Texture Atlas", icon='TEXTURE')
         
+        # row = layout.row()
+        # row.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
+
         row = layout.row()
         row.prop(context.scene.meddle_settings, "pack_alpha")
         

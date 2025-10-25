@@ -1,3 +1,4 @@
+from calendar import c
 import bpy
 import logging
 from bpy.types import Operator
@@ -364,8 +365,13 @@ class RunBake(Operator):
                 joined_mesh = meshes[0]
             
             self.report({'INFO'}, f"    Merging vertices by UV ({current_bucket}/{total_buckets})...")
+            # Ensure UV layer exists before merging
+            if not self.ensure_uv_layer(joined_mesh, "UVMap"):
+                self.report({'ERROR'}, f"Failed to create UVs for {joined_mesh.name}")
+                return (None, [], {})
+            
             # Merge vertices with duplicate UV coordinates
-            self.merge_vertices_by_uv(joined_mesh, "UVMap")
+            self.fix_uvs(context, joined_mesh, "UVMap")
             joined_meshes.append(joined_mesh)
                 
         # assign bake materials to mesh copies
@@ -384,132 +390,85 @@ class RunBake(Operator):
 
         return (armature_copy, joined_meshes, material_copies)
 
-    def merge_vertices_by_uv(self, mesh_obj, uv_layer_name):
-        """Merge vertices that share the same UV coordinates and normalize UVs to 0-1 range"""
-        
-        logger.info(f"Processing UV coordinates for {mesh_obj.name}")
-        
-        if uv_layer_name not in mesh_obj.data.uv_layers:
-            logger.warning(f"UV layer {uv_layer_name} not found in mesh {mesh_obj.name}")
-            return
-        
-        # Use BMesh for better mesh manipulation
+    def fix_uvs(self, context, mesh, map_name):
+        # 1. Find all uv islands
+        uv_islands = {}
         bm = bmesh.new()
-        bm.from_mesh(mesh_obj.data)
-        bm.verts.ensure_lookup_table()
-        bm.faces.ensure_lookup_table()
+        bm.from_mesh(mesh.data)
+        uv_layer = bm.loops.layers.uv.get(map_name)
         
-        uv_layer = bm.loops.layers.uv.get(uv_layer_name)
         if not uv_layer:
-            logger.warning(f"UV layer {uv_layer_name} not found in bmesh")
+            logger.warning(f"No UV layer named {map_name} found on mesh {mesh.name}")
             bm.free()
             return
         
-        # First, normalize wrapped UVs and split faces that span boundaries
-        needs_normalization = False
         for face in bm.faces:
+            vertex_set = frozenset(loop.vert.index for loop in face.loops)
+            if vertex_set not in uv_islands:
+                uv_islands[vertex_set] = set()
             for loop in face.loops:
-                uv = loop[uv_layer].uv
-                if uv.x < 0 or uv.x > 1 or uv.y < 0 or uv.y > 1:
-                    needs_normalization = True
-                    break
-            if needs_normalization:
-                break
-        
-        if needs_normalization:
-            logger.info(f"Normalizing wrapped UVs for {mesh_obj.name}")
+                uv_islands[vertex_set].add(loop.vert)
+                
+        # 2. Get island bounding box
+        for key, verts in uv_islands.items():
+            if len(verts) < 2:
+                continue
             
-            # Identify faces that span UV boundaries
-            faces_to_process = []
-            for face in bm.faces:
-                uvs = [loop[uv_layer].uv.copy() for loop in face.loops]
-                
-                # Check for boundary spanning
-                min_u = min(uv.x for uv in uvs)
-                max_u = max(uv.x for uv in uvs)
-                min_v = min(uv.y for uv in uvs)
-                max_v = max(uv.y for uv in uvs)
-                
-                u_span = max_u - min_u
-                v_span = max_v - min_v
-                
-                # If span > 0.5, face likely wraps around boundary
-                if u_span > 0.5 or v_span > 0.5:
-                    faces_to_process.append((face, uvs, u_span > 0.5, v_span > 0.5))
-            
-            if faces_to_process:
-                logger.info(f"Found {len(faces_to_process)} faces spanning UV boundaries, splitting...")
-                
-                # Process each spanning face
-                for face, orig_uvs, spans_u, spans_v in faces_to_process:
-                    # Determine which UV tile each vertex should be in
-                    tile_assignments = []
-                    for uv in orig_uvs:
-                        tile_u = math.floor(uv.x)
-                        tile_v = math.floor(uv.y)
-                        tile_assignments.append((tile_u, tile_v))
-                    
-                    # Get unique tiles this face spans
-                    unique_tiles = list(set(tile_assignments))
-                    
-                    if len(unique_tiles) <= 1:
-                        # Face is in a single tile, just normalize
-                        for loop in face.loops:
-                            loop[uv_layer].uv.x = loop[uv_layer].uv.x % 1.0
-                            loop[uv_layer].uv.y = loop[uv_layer].uv.y % 1.0
-                        continue
-                    
-                    # Face spans multiple tiles - need to duplicate it for each tile
-                    face_verts = [loop.vert for loop in face.loops]
-                    face_material = face.material_index
-                    face_smooth = face.smooth
-                    
-                    # Create a copy of the face for each tile it spans
-                    for tile_u, tile_v in unique_tiles:
-                        # Create new vertices at the same positions
-                        new_verts = []
-                        for v in face_verts:
-                            new_v = bm.verts.new(v.co)
-                            new_verts.append(new_v)
-                        
-                        # Create new face
-                        try:
-                            new_face = bm.faces.new(new_verts)
-                            new_face.material_index = face_material
-                            new_face.smooth = face_smooth
-                            
-                            # Set UVs for this tile copy
-                            for i, loop in enumerate(new_face.loops):
-                                orig_uv = orig_uvs[i]
-                                # Normalize UV to 0-1 range relative to this tile
-                                normalized_u = (orig_uv.x - tile_u) % 1.0
-                                normalized_v = (orig_uv.y - tile_v) % 1.0
-                                loop[uv_layer].uv = Vector((normalized_u, normalized_v))
-                        except ValueError:
-                            # Face already exists or invalid geometry
-                            logger.warning(f"Could not create duplicate face for tile ({tile_u}, {tile_v})")
-                            continue
-                    
-                    # Remove the original face
-                    bm.faces.remove(face)
-            
-            # Normalize all remaining UVs
-            for face in bm.faces:
-                for loop in face.loops:
+            min_uv = Vector((float('inf'), float('inf')))
+            max_uv = Vector((-float('inf'), -float('inf')))
+            for vert in verts:
+                for loop in vert.link_loops:
                     uv = loop[uv_layer].uv
-                    loop[uv_layer].uv = Vector((uv.x % 1.0, uv.y % 1.0))
+                    min_uv.x = min(min_uv.x, uv.x)
+                    min_uv.y = min(min_uv.y, uv.y)
+                    max_uv.x = max(max_uv.x, uv.x)
+                    max_uv.y = max(max_uv.y, uv.y)
             
-            # Update indices after modifications
-            bm.verts.ensure_lookup_table()
-            bm.faces.ensure_lookup_table()
-            logger.info(f"UV normalization complete")
-                        
-        # write back to mesh
-        bm.to_mesh(mesh_obj.data)
+            # check if island exceeds 0-1 range
+            if min_uv.x >= 0.0 and min_uv.y >= 0.0 and max_uv.x <= 1.0 and max_uv.y <= 1.0:
+                continue  # already within 0-1 range
+            
+            def fix_boundary_tile(verts, uv_layer, min_uv, max_uv):
+                # shift the max uv to be within the tile of min uv
+                for vert in verts:
+                    for loop in vert.link_loops:
+                        uv = loop[uv_layer].uv
+                        # only adjust uvs that are outside the tile
+                        # ex. if uv.x = 2.1 and tile_offset_x = 2, adjust to 2.0
+                        if uv.x > math.floor(min_uv.x) + 1.0: # if 1.1 > 0 + 1
+                            uv.x = math.floor(uv.x)
+                        if uv.y > math.floor(min_uv.y) + 1.0:
+                            uv.y = math.floor(uv.y)
+                                        
+            # Check if island crosses tile boundaries (e.g., min_uv.x = 1.9, max_uv.x = 2.1)
+            x_tile_diff = math.floor(max_uv.x) - math.floor(min_uv.x)
+            y_tile_diff = math.floor(max_uv.y) - math.floor(min_uv.y)
+            island_exceeds_tile = (x_tile_diff > 1) or (y_tile_diff > 1)
+            if island_exceeds_tile:
+                logger.error(f"UV island on mesh {mesh.name} exceeds multiple tile boundaries, cannot fix automatically.")
+                continue
+            
+            island_crosses_boundary = (x_tile_diff > 0) or (y_tile_diff > 0)
+            if island_crosses_boundary:
+                fix_boundary_tile(verts, uv_layer, min_uv, max_uv)
+                continue
+            
+            # Now normalize to 0-1 range if needed
+            island_exists_outside_0_1 = (min_uv.x < 0.0 or min_uv.y < 0.0 or max_uv.x > 1.0 or max_uv.y > 1.0)
+            if island_exists_outside_0_1:
+                # Calculate tile offset to move to 0-1 range
+                tile_offset_x = math.floor(min_uv.x)
+                tile_offset_y = math.floor(min_uv.y)
+                
+                # Shift uvs to 0-1 range
+                for vert in verts:
+                    for loop in vert.link_loops:
+                        uv = loop[uv_layer].uv
+                        uv.x = uv.x - tile_offset_x
+                        uv.y = uv.y - tile_offset_y
+            
+        bm.to_mesh(mesh.data)
         bm.free()
-        mesh_obj.data.update()
-
-        logger.info(f"UV processing complete for {mesh_obj.name}")
 
     def bakeMaterial(self, context, material, joined_mesh):
         logger.info(f"Baking material: {material.name}")
@@ -795,3 +754,52 @@ class RunBake(Operator):
             material.node_tree.links.new(from_socket, input_socket)
         
         return image_node
+
+    def ensure_uv_layer(self, mesh_obj, uv_layer_name="UVMap"):
+        """Ensure the mesh has a UV layer, create one if missing"""
+        
+        if uv_layer_name in mesh_obj.data.uv_layers:
+            logger.info(f"UV layer '{uv_layer_name}' already exists for {mesh_obj.name}")
+            return True
+        
+        logger.info(f"UV layer '{uv_layer_name}' not found for {mesh_obj.name}, generating UVs...")
+        self.report({'WARNING'}, f"  Mesh {mesh_obj.name} has no UVs, generating smart UV projection...")
+        
+        # Select only this mesh
+        bpy.ops.object.select_all(action='DESELECT')
+        mesh_obj.select_set(True)
+        bpy.context.view_layer.objects.active = mesh_obj
+        
+        # Switch to edit mode and select all
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        
+        # Generate Smart UV Project
+        try:
+            bpy.ops.uv.smart_project(
+                angle_limit=66.0,
+                island_margin=0.02,
+                area_weight=0.0,
+                correct_aspect=True,
+                scale_to_bounds=False
+            )
+            logger.info(f"Successfully generated UVs for {mesh_obj.name}")
+        except Exception as e:
+            logger.error(f"Failed to generate UVs for {mesh_obj.name}: {e}")
+            bpy.ops.object.mode_set(mode='OBJECT')
+            return False
+        
+        # Return to object mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        # Verify UV layer was created
+        if uv_layer_name not in mesh_obj.data.uv_layers:
+            # If default name doesn't exist, rename the first UV layer
+            if len(mesh_obj.data.uv_layers) > 0:
+                mesh_obj.data.uv_layers[0].name = uv_layer_name
+                logger.info(f"Renamed UV layer to '{uv_layer_name}'")
+            else:
+                logger.error(f"Failed to create UV layer for {mesh_obj.name}")
+                return False
+        
+        return True
