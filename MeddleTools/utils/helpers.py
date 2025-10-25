@@ -1,6 +1,6 @@
 import bpy
 
-def _safe_deselect_all_objects(context: bpy.types.Context):
+def safe_deselect_all_objects(context: bpy.types.Context):
     try:
         for ob in context.view_layer.objects:
             try:

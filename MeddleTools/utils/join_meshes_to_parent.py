@@ -127,10 +127,10 @@ class JoinMeshesToParent(Operator):
                               len(meshes), parent.name)
 
                 # Perform the join operation
-                joined_count = self._perform_join(context, objects_to_join, target_object, parent)
+                joined_count = self.perform_join(context, objects_to_join, target_object, parent)
                 if joined_count > 0:
                     total_joined += joined_count
-                    logger.info("JOIN COMPLETED: %d objects joined for parent '%s'", joined_count, self._safe_get_name(parent))
+                    logger.info("JOIN COMPLETED: %d objects joined for parent '%s'", joined_count, self.safe_get_name(parent))
 
                     # Check if this resulted in only one child, and if so, join to parent
                     if (parent.type == 'MESH' and is_object_valid(parent) and 
@@ -142,19 +142,19 @@ class JoinMeshesToParent(Operator):
                         
                         if len(remaining_children) == 1:
                             logger.info("AUTO-JOIN: Only one child remains, joining to parent '%s'", parent.name)
-                            final_join_count = self._perform_join(context, [parent, remaining_children[0]], parent, parent)
+                            final_join_count = self.perform_join(context, [parent, remaining_children[0]], parent, parent)
                             if final_join_count > 0:
                                 total_joined += final_join_count
-                                logger.info("AUTO-JOIN COMPLETED: %d objects joined to parent '%s'", final_join_count, self._safe_get_name(parent))
+                                logger.info("AUTO-JOIN COMPLETED: %d objects joined to parent '%s'", final_join_count, self.safe_get_name(parent))
 
             except Exception as e:
-                parent_name = self._safe_get_name(parent)
+                parent_name = self.safe_get_name(parent)
                 logger.exception("Error processing parent '%s': %s", parent_name, str(e))
                 self.report({'WARNING'}, f"Error processing parent '{parent_name}': {str(e)}")
                 continue
 
         # Restore selection
-        self._restore_selection(context)
+        self.restore_selection(context)
 
         if total_joined > 0:
             self.report({'INFO'}, f"Joined {total_joined} objects")
@@ -163,7 +163,7 @@ class JoinMeshesToParent(Operator):
             self.report({'INFO'}, "No objects were joined")
             return {'CANCELLED'}
 
-    def _safe_get_name(self, obj):
+    def safe_get_name(self, obj):
         """Safely get object name without raising ReferenceError."""
         try:
             if hasattr(obj, 'name') and obj.name in bpy.data.objects:
@@ -172,7 +172,7 @@ class JoinMeshesToParent(Operator):
             pass
         return '<unknown>'
 
-    def _perform_join(self, context, objects_to_join, target_object, parent):
+    def perform_join(self, context, objects_to_join, target_object, parent):
         """Perform the actual join operation with proper error handling."""
         try:
             # Validate all objects before joining
@@ -183,19 +183,19 @@ class JoinMeshesToParent(Operator):
                 return 0
 
             # Handle child reparenting before join
-            self._reparent_children(valid_objects, target_object)
+            self.reparent_children(valid_objects, target_object)
 
             # Deselect all then select objects to join
             try:
                 bpy.ops.object.select_all(action='DESELECT')
             except Exception:
-                helpers._safe_deselect_all_objects(context)
+                helpers.safe_deselect_all_objects(context)
 
             for obj in valid_objects:
                 try:
                     obj.select_set(True)
                 except Exception:
-                    logger.warning("Could not select object '%s' for join", self._safe_get_name(obj))
+                    logger.warning("Could not select object '%s' for join", self.safe_get_name(obj))
 
             # Set target as active object
             context.view_layer.objects.active = target_object
@@ -204,8 +204,8 @@ class JoinMeshesToParent(Operator):
             helpers.ensure_object_mode(context, 'OBJECT')
             
             # Log the join operation details
-            object_names = [self._safe_get_name(obj) for obj in valid_objects]
-            parent_name = self._safe_get_name(parent)
+            object_names = [self.safe_get_name(obj) for obj in valid_objects]
+            parent_name = self.safe_get_name(parent)
             logger.info("JOINING: %d objects [%s] for parent '%s'", 
                        len(valid_objects), ', '.join(object_names), parent_name)
             
@@ -216,12 +216,12 @@ class JoinMeshesToParent(Operator):
             return joined_count
 
         except Exception as e:
-            parent_name = self._safe_get_name(parent)
+            parent_name = self.safe_get_name(parent)
             logger.exception("Failed to join objects for parent '%s': %s", parent_name, str(e))
             self.report({'WARNING'}, f"Failed to join objects for parent '{parent_name}': {str(e)}")
             return 0
 
-    def _reparent_children(self, objects_to_join, target_object):
+    def reparent_children(self, objects_to_join, target_object):
         """Reparent children of objects that will be removed during join."""
         children_to_reparent = []
         
@@ -248,7 +248,7 @@ class JoinMeshesToParent(Operator):
                 continue
             except Exception:
                 logger.debug("Error collecting children for reparenting from object '%s'", 
-                           self._safe_get_name(src))
+                           self.safe_get_name(src))
         
         # Reparent collected children
         for child, original_matrix in children_to_reparent:
@@ -262,14 +262,14 @@ class JoinMeshesToParent(Operator):
             except (ReferenceError, AttributeError):
                 continue
             except Exception:
-                logger.debug("Failed to reparent child '%s'", self._safe_get_name(child))
+                logger.debug("Failed to reparent child '%s'", self.safe_get_name(child))
 
-    def _restore_selection(self, context):
+    def restore_selection(self, context):
         """Restore a sensible selection state."""
         try:
             bpy.ops.object.select_all(action='DESELECT')
         except Exception:
-            helpers._safe_deselect_all_objects(context)
+            helpers.safe_deselect_all_objects(context)
         
         if (context.view_layer.objects.active and 
             hasattr(context.view_layer.objects.active, 'name') and

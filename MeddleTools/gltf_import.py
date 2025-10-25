@@ -155,7 +155,7 @@ class ModelImport(bpy.types.Operator):
                 filepath = self._import_queue[self._current_import_index]
                 
                 try:
-                    self._import_single_file(filepath, context)
+                    self.import_single_file(filepath, context)
                     print(f"Imported file {self._current_import_index + 1}/{len(self._import_queue)}: {path.basename(filepath)}")
                     # update the UI progress and operator report
                     try:
@@ -223,7 +223,7 @@ class ModelImport(bpy.types.Operator):
         self._current_import_index = 0
         self._context = None
     
-    def _import_single_file(self, filepath, context):
+    def import_single_file(self, filepath, context):
         """Import a single GLTF file and process it"""
         print(f"GLTF Path: {filepath}")
         

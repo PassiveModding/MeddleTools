@@ -19,7 +19,7 @@ TEXTURE_DEFAULTS = {
 NON_COLOR_TYPES = {'normal', 'roughness', 'alpha'}
 
 
-def _uv_bounds_to_pixels(uv_bounds, size):
+def uv_bounds_to_pixels(uv_bounds, size):
     """Convert UV bounds (0-1) into pixel-space start/end coordinates."""
     width, height = size
     min_u, min_v, max_u, max_v = uv_bounds
@@ -101,7 +101,7 @@ def find_content_bounds(image, tex_type, uv_bounds):
     min_u, min_v, max_u, max_v = uv_bounds
     
     # Convert UV bounds to pixel coordinates
-    crop_x_start, crop_x_end, crop_y_start, crop_y_end = _uv_bounds_to_pixels(
+    crop_x_start, crop_x_end, crop_y_start, crop_y_end = uv_bounds_to_pixels(
         uv_bounds, (tex_width, tex_height)
     )
     
@@ -358,11 +358,11 @@ class RunAtlas(Operator):
         logger.info(f"Atlas resolution: {atlas_width}x{atlas_height}")
         self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
-        atlas_images = self._create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
-        material_uv_mapping = self._copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha)
+        atlas_images = self.create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
+        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha)
         
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
-        atlas_material = self._create_atlas_material(atlas_name, atlas_images, pack_alpha)
+        atlas_material = self.create_atlas_material(atlas_name, atlas_images, pack_alpha)
         
         joined_mesh.data.materials.clear()
         joined_mesh.data.materials.append(atlas_material)
@@ -376,7 +376,7 @@ class RunAtlas(Operator):
         
         return atlas_material
     
-    def _create_atlas_images(self, atlas_name, atlas_width, atlas_height, texture_types):
+    def create_atlas_images(self, atlas_name, atlas_width, atlas_height, texture_types):
         """Create and initialize atlas images for each texture type"""
         atlas_images = {}
         
@@ -404,7 +404,7 @@ class RunAtlas(Operator):
         
         return atlas_images
     
-    def _copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha):
+    def copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha):
         """Copy material textures into atlas and build UV mapping"""
         material_uv_mapping = {}
         material_info_by_idx = {info['index']: info for info in material_info}
@@ -475,7 +475,7 @@ class RunAtlas(Operator):
 
         return material_uv_mapping
     
-    def _create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
+    def create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
         """Create material with atlas textures"""
         atlas_material = bpy.data.materials.new(name=atlas_name)
         atlas_material.use_nodes = True
@@ -542,7 +542,7 @@ class RunAtlas(Operator):
         atlas_height, atlas_width = atlas_pixels.shape[:2]
 
         # Crop to UV bounds
-        crop_x_start, crop_x_end, crop_y_start, crop_y_end = _uv_bounds_to_pixels(uv_bounds, (source_width, source_height))
+        crop_x_start, crop_x_end, crop_y_start, crop_y_end = uv_bounds_to_pixels(uv_bounds, (source_width, source_height))
         source_pixels = img_as_nparray(source_image)[crop_y_start:crop_y_end, crop_x_start:crop_x_end, :]
         cropped_height, cropped_width = source_pixels.shape[:2]
         
@@ -558,11 +558,11 @@ class RunAtlas(Operator):
             source_pixels = np.concatenate([alpha_channel] * 3 + [np.ones_like(alpha_channel)], axis=2)
         elif tex_type == 'diffuse' and alpha_image:
             logger.info(f"Packing alpha channel into diffuse texture")
-            alpha_crop = _uv_bounds_to_pixels(uv_bounds, (alpha_image.size[0], alpha_image.size[1]))
+            alpha_crop = uv_bounds_to_pixels(uv_bounds, (alpha_image.size[0], alpha_image.size[1]))
             alpha_cropped = img_as_nparray(alpha_image)[alpha_crop[2]:alpha_crop[3], alpha_crop[0]:alpha_crop[1], :]
             
             if alpha_cropped.shape[:2] != source_pixels.shape[:2]:
-                alpha_cropped = self._bilinear_resize(alpha_cropped, cropped_width, cropped_height, alpha_cropped.shape[1], alpha_cropped.shape[0])
+                alpha_cropped = self.bilinear_resize(alpha_cropped, cropped_width, cropped_height, alpha_cropped.shape[1], alpha_cropped.shape[0])
             
             source_pixels[:, :, 3] = alpha_cropped[:, :, 3]
         elif tex_type == 'diffuse':
@@ -574,7 +574,7 @@ class RunAtlas(Operator):
             logger.info(f"{resize_type} texture from {cropped_width}x{cropped_height} to {width}x{height}")
             if resize_type == "Upscaling":
                 logger.warning(f"Upscaling texture - may indicate packing inefficiency")
-            source_pixels = self._bilinear_resize(source_pixels, width, height, cropped_width, cropped_height)
+            source_pixels = self.bilinear_resize(source_pixels, width, height, cropped_width, cropped_height)
         
         # Calculate clipped bounds and copy
         x0, y0 = max(dest_x, 0), max(dest_y, 0)
@@ -584,7 +584,7 @@ class RunAtlas(Operator):
             sx0, sy0 = x0 - dest_x, y0 - dest_y
             atlas_pixels[dest_y + sy0:dest_y + sy0 + (y1 - y0), x0:x1, :] = source_pixels[sy0:sy0 + (y1 - y0), sx0:sx0 + (x1 - x0), :]
     
-    def _bilinear_resize(self, source_pixels, width, height, source_width, source_height):
+    def bilinear_resize(self, source_pixels, width, height, source_width, source_height):
         """Resize image using bilinear interpolation"""
         x_ratio, y_ratio = source_width / width, source_height / height
         xs, ys = np.arange(width, dtype=np.float32) * x_ratio, np.arange(height, dtype=np.float32) * y_ratio
