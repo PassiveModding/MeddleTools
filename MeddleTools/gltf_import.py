@@ -1,7 +1,7 @@
 import bpy
 from os import path
 
-from . import node_configs
+from .node_setup import node_configs
 from . import blend_import
 from . import lighting
 
