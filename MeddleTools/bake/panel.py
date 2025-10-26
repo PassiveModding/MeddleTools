@@ -37,8 +37,8 @@ class MeddleBakePanel(bpy.types.Panel):
         row = layout.row()
         row.label(text="Texture Atlas", icon='TEXTURE')
         
-        # row = layout.row()
-        # row.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
+        row = layout.row()
+        row.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
 
         row = layout.row()
         row.prop(context.scene.meddle_settings, "pack_alpha")
