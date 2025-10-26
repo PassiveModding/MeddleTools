@@ -1,5 +1,7 @@
 import bpy
-    
+import math
+import os
+
 def require_mesh_or_armature_selected(context):
     """Check if operation can be executed"""
     # Require at least one mesh or armature selected
@@ -96,3 +98,141 @@ def get_uv_islands(mesh):
                 islands.append(island_loops)
                 
     return islands
+
+def calculate_bake_margin(image_size):
+    """Calculate bake margin based on image size (0.78125% of max dimension)"""
+    return int(math.ceil(0.0078125 * max(image_size)))
+
+def create_bake_image(name, width, height, background_color=(0.0, 0.0, 0.0, 1.0), alpha_mode='STRAIGHT', colorspace='sRGB'):
+    """Create a new image for baking with proper settings
+    
+    Args:
+        name: Name of the image
+        width: Width in pixels
+        height: Height in pixels
+        background_color: RGBA tuple for background color
+        alpha_mode: 'STRAIGHT', 'CHANNEL_PACKED', or 'NONE'
+        colorspace: 'sRGB' or 'Non-Color'
+    
+    Returns:
+        The created image
+    """
+    # Remove existing image with same name
+    if name in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[name])
+    
+    image = bpy.data.images.new(
+        name=name,
+        width=width,
+        height=height,
+        alpha=True
+    )
+    image.generated_color = background_color
+    image.alpha_mode = alpha_mode
+    image.colorspace_settings.name = colorspace
+    
+    # Set filepath relative to blend file
+    blend_filepath = bpy.data.filepath
+    blend_dir = os.path.dirname(blend_filepath)
+    image.filepath = os.path.join(blend_dir, "Bake", f"{name}.png")
+    
+    return image
+
+def disconnect_bsdf_inputs(material, required_inputs):
+    """Disconnect all BSDF inputs except those in required_inputs list
+    
+    Args:
+        material: The material to process
+        required_inputs: List of input socket names to keep connected
+    
+    Returns:
+        List of tuples (input_socket, from_node, from_socket) for reconnecting later
+    """
+    disconnect_inputs = []
+    
+    for node in material.node_tree.nodes:
+        if node.type == 'BSDF_PRINCIPLED':
+            for input_socket in node.inputs:
+                if input_socket.name not in required_inputs:
+                    # Disconnect
+                    for link in input_socket.links:
+                        from_node = link.from_node
+                        from_socket = link.from_socket
+                        disconnect_inputs.append((input_socket, from_node, from_socket))
+                        material.node_tree.links.remove(link)
+    
+    return disconnect_inputs
+
+def reconnect_inputs(disconnect_inputs):
+    """Reconnect previously disconnected inputs
+    
+    Args:
+        disconnect_inputs: List of tuples (input_socket, from_node, from_socket)
+    """
+    for input_socket, from_node, from_socket in disconnect_inputs:
+        input_socket.id_data.links.new(from_socket, input_socket)
+
+def setup_bake_settings(context, bake_type, pass_filter, bake_margin, samples=32, use_clear=True):
+    """Setup Cycles bake settings
+    
+    Args:
+        context: Blender context
+        bake_type: Bake type string ('DIFFUSE', 'NORMAL', 'ROUGHNESS', etc.)
+        pass_filter: Set of pass filters ('COLOR', 'DIRECT', 'INDIRECT', etc.)
+        bake_margin: Margin in pixels
+        samples: Number of samples for baking
+        use_clear: Whether to clear the image before baking
+    """
+    context.scene.render.engine = 'CYCLES'
+    context.scene.cycles.bake_type = bake_type
+    context.scene.cycles.use_denoising = False
+    context.scene.render.bake.use_pass_direct = "DIRECT" in pass_filter
+    context.scene.render.bake.use_pass_indirect = "INDIRECT" in pass_filter
+    context.scene.render.bake.use_pass_color = "COLOR" in pass_filter
+    context.scene.render.bake.use_pass_diffuse = "DIFFUSE" in pass_filter
+    context.scene.render.bake.use_pass_emit = "EMIT" in pass_filter
+    context.scene.render.bake.target = "IMAGE_TEXTURES"
+    context.scene.cycles.samples = samples
+    context.scene.render.bake.margin = bake_margin
+    context.scene.render.image_settings.color_mode = 'RGB'
+    context.scene.render.bake.use_clear = use_clear
+    context.scene.render.bake.use_selected_to_active = False
+    context.scene.render.bake.normal_space = 'TANGENT'
+
+def get_bake_pass_config(pass_name):
+    """Get baking configuration for a specific pass
+    
+    Args:
+        pass_name: Name of the pass ('diffuse', 'normal', 'roughness')
+    
+    Returns:
+        Dictionary with bake_type, background_color, pass_filter, required_inputs, alpha_mode, colorspace
+    """
+    configs = {
+        'diffuse': {
+            'bake_type': 'DIFFUSE',
+            'background_color': (0.0, 0.0, 0.0, 1.0),
+            'pass_filter': {'COLOR'},
+            'required_inputs': ['Base Color', 'Alpha'],
+            'alpha_mode': 'CHANNEL_PACKED',
+            'colorspace': 'sRGB'
+        },
+        'normal': {
+            'bake_type': 'NORMAL',
+            'background_color': (0.5, 0.5, 1.0, 1.0),
+            'pass_filter': set(),
+            'required_inputs': ['Normal'],
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color'
+        },
+        'roughness': {
+            'bake_type': 'ROUGHNESS',
+            'background_color': (0.5, 0.5, 0.5, 1.0),
+            'pass_filter': set(),
+            'required_inputs': ['Roughness', 'Metallic'],
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color'
+        }
+    }
+    
+    return configs.get(pass_name.lower(), None)

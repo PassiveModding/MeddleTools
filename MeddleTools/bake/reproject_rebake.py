@@ -17,12 +17,30 @@ except Exception:
 
 class ReprojectRebake(Operator):
     bl_idname = "object.reproject_rebake"
-    bl_label = "Reproject and Rebake Textures"
+    bl_label = "Reproject and Rebake Atlassed Textures"
+    bl_description = "Reproject UVs and rebake atlassed materials to new 4K textures. Only works on materials created with 'Create Atlas from Selection'"
     bl_options = {'REGISTER', 'UNDO'}
     
     @classmethod
     def poll(cls, context):
-        return bpy.data.is_saved and bake_utils.require_mesh_or_armature_selected(context)
+        if not bpy.data.is_saved or not bake_utils.require_mesh_or_armature_selected(context):
+            return False
+        
+        # Check if any selected mesh has atlassed materials
+        selected_meshes = bake_utils.get_all_selected_meshes(context)
+        for mesh_obj in selected_meshes:
+            if cls.has_atlassed_materials(mesh_obj):
+                return True
+        
+        return False
+    
+    @staticmethod
+    def has_atlassed_materials(mesh_obj):
+        """Check if mesh has materials created by the atlas operator"""
+        for mat_slot in mesh_obj.material_slots:
+            if mat_slot.material and mat_slot.material.name.startswith("Atlas_"):
+                return True
+        return False
     
     def execute(self, context):
         selected_meshes = bake_utils.get_all_selected_meshes(context)
@@ -30,10 +48,17 @@ class ReprojectRebake(Operator):
             self.report({'WARNING'}, "No mesh objects selected.")
             return {'CANCELLED'}
         
-        logger.info(f"Starting Reproject and Rebake for {len(selected_meshes)} mesh(es)")
+        # Filter meshes to only those with atlassed materials
+        atlassed_meshes = [mesh for mesh in selected_meshes if self.has_atlassed_materials(mesh)]
+        
+        if not atlassed_meshes:
+            self.report({'WARNING'}, "No meshes with atlassed materials selected. Materials must be created with 'Create Atlas from Selection' first.")
+            return {'CANCELLED'}
+        
+        logger.info(f"Starting Reproject and Rebake for {len(atlassed_meshes)} mesh(es) with atlassed materials")
         
         # Process each mesh
-        for mesh_obj in selected_meshes:
+        for mesh_obj in atlassed_meshes:
             self.report({'INFO'}, f"Processing mesh: {mesh_obj.name}")
             
             # Step 1: Create new UV map and reproject
@@ -106,7 +131,7 @@ class ReprojectRebake(Operator):
         return True
     
     def rebake_materials(self, context, mesh_obj):
-        """Bake all materials to new 4K textures using the ReprojectedUVs"""
+        """Bake all atlassed materials to new 4K textures using the ReprojectedUVs"""
         logger.info(f"Rebaking materials for {mesh_obj.name}")
         
         mesh = mesh_obj.data
@@ -119,13 +144,20 @@ class ReprojectRebake(Operator):
         # Set ReprojectedUVs as active
         mesh.uv_layers.active = mesh.uv_layers["ReprojectedUVs"]
         
-        # Process each material slot
+        # Process each atlassed material slot
+        processed_any = False
         for mat_slot in mesh_obj.material_slots:
             if not mat_slot.material:
                 continue
             
             material = mat_slot.material
-            logger.info(f"Processing material: {material.name}")
+            
+            # Only process atlassed materials
+            if not material.name.startswith("Atlas_"):
+                logger.info(f"Skipping non-atlassed material: {material.name}")
+                continue
+            
+            logger.info(f"Processing atlassed material: {material.name}")
             
             # Validate material structure (should only have textures, normal map, BSDF, and material output)
             if not self.validate_material_structure(material):
@@ -136,6 +168,12 @@ class ReprojectRebake(Operator):
             if not self.bake_material_to_4k(context, material, mesh_obj):
                 logger.error(f"Failed to bake material: {material.name}")
                 continue
+            
+            processed_any = True
+        
+        if not processed_any:
+            logger.warning(f"No atlassed materials found to process on {mesh_obj.name}")
+            return False
         
         return True
     
@@ -176,90 +214,61 @@ class ReprojectRebake(Operator):
         
         # Target resolution: 4K
         target_size = (4096, 4096)
-        bake_margin = int(math.ceil(0.0078125 * max(target_size)))
+        bake_margin = bake_utils.calculate_bake_margin(target_size)
         
-        # Bake passes with required inputs for proper disconnection
-        passes_to_bake = [
-            ('Diffuse', 'DIFFUSE', (0.0, 0.0, 0.0, 1.0), {'COLOR'}, ['Base Color', 'Alpha']),
-            ('Normal', 'NORMAL', (0.5, 0.5, 1.0, 1.0), {}, ['Normal']),
-            ('Roughness', 'ROUGHNESS', (0.5, 0.5, 0.5, 1.0), {}, ['Roughness', 'Metallic'])
-        ]
-        
+        # Bake passes
+        passes_to_bake = ['diffuse', 'normal', 'roughness']
         baked_images = {}
         
-        for pass_name, bake_type, bg_color, pass_filter, required_inputs in passes_to_bake:
+        for pass_name in passes_to_bake:
             logger.info(f"Baking {pass_name} pass for {material.name}")
             
-            # Create new 4K image
-            image_name = f"REBAKE_{pass_name}_{material.name}"
-            if image_name in bpy.data.images:
-                bpy.data.images.remove(bpy.data.images[image_name])
+            # Get pass configuration
+            config = bake_utils.get_bake_pass_config(pass_name)
+            if not config:
+                logger.error(f"Unknown bake pass: {pass_name}")
+                continue
             
-            image = bpy.data.images.new(
+            # Create new 4K image with proper settings
+            image_name = f"REBAKE_{pass_name.capitalize()}_{material.name}"
+            image = bake_utils.create_bake_image(
                 name=image_name,
                 width=target_size[0],
                 height=target_size[1],
-                alpha=True
+                background_color=config['background_color'],
+                alpha_mode=config['alpha_mode'],
+                colorspace=config['colorspace']
             )
-            image.generated_color = bg_color
-            # Diffuse needs CHANNEL_PACKED for proper alpha handling, others use STRAIGHT
-            image.alpha_mode = 'CHANNEL_PACKED' if pass_name == 'Diffuse' else 'STRAIGHT'
-            # Set colorspace for non-color data (Normal, Roughness)
-            if pass_name in ['Normal', 'Roughness']:
-                image.colorspace_settings.name = 'Non-Color'
-            
-            # Set filepath
-            blend_filepath = bpy.data.filepath
-            blend_dir = os.path.dirname(blend_filepath)
-            image.filepath = os.path.join(blend_dir, "Bake", f"{image_name}.png")
             
             # Create image texture node for baking
             image_node = material.node_tree.nodes.new('ShaderNodeTexImage')
             image_node.image = image
-            image_node.label = f"REBAKE_{pass_name}"
+            image_node.label = f"REBAKE_{pass_name.capitalize()}"
             material.node_tree.nodes.active = image_node
             
-            # Disconnect inputs that aren't needed for this bake pass to prevent interference
-            disconnect_inputs = []
-            for node in material.node_tree.nodes:
-                if node.type == 'BSDF_PRINCIPLED':
-                    for input_socket in node.inputs:
-                        if input_socket.name not in required_inputs:
-                            # Disconnect
-                            for link in input_socket.links:
-                                from_node = link.from_node
-                                from_socket = link.from_socket
-                                disconnect_inputs.append((input_socket, from_node, from_socket))
-                                material.node_tree.links.remove(link)
+            # Disconnect inputs that aren't needed for this bake pass
+            disconnect_inputs = bake_utils.disconnect_bsdf_inputs(material, config['required_inputs'])
             
             # Select the mesh
             bpy.ops.object.select_all(action='DESELECT')
             mesh_obj.select_set(True)
             context.view_layer.objects.active = mesh_obj
             
-            # Ensure we're using Cycles
-            context.scene.render.engine = 'CYCLES'
-            
-            # Set up bake settings
-            context.scene.cycles.bake_type = bake_type
-            context.scene.cycles.use_denoising = False
-            context.scene.render.bake.use_pass_direct = "DIRECT" in pass_filter
-            context.scene.render.bake.use_pass_indirect = "INDIRECT" in pass_filter
-            context.scene.render.bake.use_pass_color = "COLOR" in pass_filter
-            context.scene.render.bake.use_pass_diffuse = "DIFFUSE" in pass_filter
-            context.scene.render.bake.use_pass_emit = "EMIT" in pass_filter
-            context.scene.render.bake.target = "IMAGE_TEXTURES"
-            context.scene.cycles.samples = context.scene.meddle_settings.bake_samples if hasattr(context.scene, 'meddle_settings') else 32
-            context.scene.render.bake.margin = bake_margin
-            context.scene.render.image_settings.color_mode = 'RGB'
-            context.scene.render.bake.use_clear = True
-            context.scene.render.bake.use_selected_to_active = False
-            context.scene.render.bake.normal_space = 'TANGENT'
+            # Setup bake settings
+            samples = context.scene.meddle_settings.bake_samples if hasattr(context.scene, 'meddle_settings') else 32
+            bake_utils.setup_bake_settings(
+                context,
+                config['bake_type'],
+                config['pass_filter'],
+                bake_margin,
+                samples=samples,
+                use_clear=True
+            )
             
             # Perform bake
             try:
                 bpy.ops.object.bake(
-                    type=bake_type,
+                    type=config['bake_type'],
                     use_clear=True,
                     uv_layer="ReprojectedUVs",
                     use_selected_to_active=False,
@@ -273,22 +282,26 @@ class ReprojectRebake(Operator):
                 image.save()
                 logger.info(f"Saved baked image to: {image.filepath}")
                 
-                baked_images[pass_name] = image_node
+                baked_images[pass_name.capitalize()] = image_node
             except Exception as e:
                 logger.error(f"Failed to bake {pass_name} pass: {e}")
                 material.node_tree.nodes.remove(image_node)
                 # Reconnect disconnected inputs before continuing
-                for input_socket, from_node, from_socket in disconnect_inputs:
-                    material.node_tree.links.new(from_socket, input_socket)
+                bake_utils.reconnect_inputs(disconnect_inputs)
                 continue
             
             # Reconnect previously disconnected inputs
-            for input_socket, from_node, from_socket in disconnect_inputs:
-                material.node_tree.links.new(from_socket, input_socket)
+            bake_utils.reconnect_inputs(disconnect_inputs)
         
         # Clean up and reconnect nodes with baked textures
         if baked_images:
             self.reconnect_baked_textures(material, baked_images, principled_node)
+        
+        # Set ReprojectedUVs as the active UV map after baking
+        mesh = mesh_obj.data
+        if "ReprojectedUVs" in mesh.uv_layers:
+            mesh.uv_layers.active = mesh.uv_layers["ReprojectedUVs"]
+            logger.info(f"Set ReprojectedUVs as active UV map for {mesh_obj.name}")
         
         return True
     
