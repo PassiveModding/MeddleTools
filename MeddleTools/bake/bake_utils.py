@@ -28,30 +28,32 @@ def get_all_selected_meshes(context):
     
     return selected_meshes
 
-def get_uv_islands(mesh):
+def get_uv_islands(mesh, full_island_detection=False):
     visited = set()
     islands = []
     
-    # Build adjacency map based on UV edges
-    # Two loops are connected if they share an edge with matching UVs
-    # def build_uv_adjacency():
-    #     adjacency = {}
-    #     for poly in mesh.polygons:
-    #         loop_indices = list(poly.loop_indices)
-    #         for i, li in enumerate(loop_indices):
-    #             next_li = loop_indices[(i + 1) % len(loop_indices)]
-    #             if li not in adjacency:
-    #                 adjacency[li] = []
-    #             if next_li not in adjacency:
-    #                 adjacency[next_li] = []
-    #             adjacency[li].append(next_li)
-    #             adjacency[next_li].append(li)
-    #     return adjacency
+
     uv_layer = mesh.uv_layers.active
     if uv_layer is None:
         return []
     
+    # Build adjacency map based on UV edges
+    # Two loops are connected if they share an edge with matching UVs
     def build_uv_adjacency():
+        adjacency = {}
+        for poly in mesh.polygons:
+            loop_indices = list(poly.loop_indices)
+            for i, li in enumerate(loop_indices):
+                next_li = loop_indices[(i + 1) % len(loop_indices)]
+                if li not in adjacency:
+                    adjacency[li] = []
+                if next_li not in adjacency:
+                    adjacency[next_li] = []
+                adjacency[li].append(next_li)
+                adjacency[next_li].append(li)
+        return adjacency
+    
+    def build_uv_adjacency_full():
         # Map UV coordinates to loop indices
         uv_to_loops = {}
         for loop_index, uv in enumerate(uv_layer.data):
@@ -71,7 +73,7 @@ def get_uv_islands(mesh):
         
         return adjacency
     
-    adjacency = build_uv_adjacency()
+    adjacency = build_uv_adjacency_full() if full_island_detection else build_uv_adjacency()
     
     def get_connected_loops(start_loop_index):
         to_visit = [start_loop_index]

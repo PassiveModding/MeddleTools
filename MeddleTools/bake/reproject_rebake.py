@@ -73,6 +73,13 @@ class ReprojectRebake(Operator):
             
             self.report({'INFO'}, f"Successfully processed {mesh_obj.name}")
         
+        # set new UV map as active for all processed meshes
+        for mesh_obj in atlassed_meshes:
+            mesh = mesh_obj.data
+            if "ReprojectedUVs" in mesh.uv_layers:
+                mesh.uv_layers.active = mesh.uv_layers["ReprojectedUVs"]
+                logger.info(f"Set ReprojectedUVs as active UV map for {mesh_obj.name}")
+        
         self.report({'INFO'}, "Reproject and Rebake completed")
         return {'FINISHED'}
     
@@ -118,7 +125,10 @@ class ReprojectRebake(Operator):
             # use unwrap angle based
             bpy.ops.uv.unwrap(
                 method='ANGLE_BASED',
-                margin=0.001
+                margin=0.001,
+                no_flip=True,
+                correct_aspect=True,
+                fill_holes=True
             )
         except Exception as e:
             logger.error(f"Failed to generate Smart UV projection: {e}")
