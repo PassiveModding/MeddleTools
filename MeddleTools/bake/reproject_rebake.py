@@ -178,16 +178,16 @@ class ReprojectRebake(Operator):
         target_size = (4096, 4096)
         bake_margin = int(math.ceil(0.0078125 * max(target_size)))
         
-        # Bake passes
+        # Bake passes with required inputs for proper disconnection
         passes_to_bake = [
-            ('Diffuse', 'DIFFUSE', (1.0, 1.0, 1.0, 1.0), {'COLOR'}),
-            ('Normal', 'NORMAL', (0.5, 0.5, 1.0, 1.0), {}),
-            ('Roughness', 'ROUGHNESS', (0.5, 0.5, 0.5, 1.0), {})
+            ('Diffuse', 'DIFFUSE', (0.0, 0.0, 0.0, 1.0), {'COLOR'}, ['Base Color', 'Alpha']),
+            ('Normal', 'NORMAL', (0.5, 0.5, 1.0, 1.0), {}, ['Normal']),
+            ('Roughness', 'ROUGHNESS', (0.5, 0.5, 0.5, 1.0), {}, ['Roughness', 'Metallic'])
         ]
         
         baked_images = {}
         
-        for pass_name, bake_type, bg_color, pass_filter in passes_to_bake:
+        for pass_name, bake_type, bg_color, pass_filter, required_inputs in passes_to_bake:
             logger.info(f"Baking {pass_name} pass for {material.name}")
             
             # Create new 4K image
@@ -202,7 +202,11 @@ class ReprojectRebake(Operator):
                 alpha=True
             )
             image.generated_color = bg_color
+            # Diffuse needs CHANNEL_PACKED for proper alpha handling, others use STRAIGHT
             image.alpha_mode = 'CHANNEL_PACKED' if pass_name == 'Diffuse' else 'STRAIGHT'
+            # Set colorspace for non-color data (Normal, Roughness)
+            if pass_name in ['Normal', 'Roughness']:
+                image.colorspace_settings.name = 'Non-Color'
             
             # Set filepath
             blend_filepath = bpy.data.filepath
@@ -214,6 +218,19 @@ class ReprojectRebake(Operator):
             image_node.image = image
             image_node.label = f"REBAKE_{pass_name}"
             material.node_tree.nodes.active = image_node
+            
+            # Disconnect inputs that aren't needed for this bake pass to prevent interference
+            disconnect_inputs = []
+            for node in material.node_tree.nodes:
+                if node.type == 'BSDF_PRINCIPLED':
+                    for input_socket in node.inputs:
+                        if input_socket.name not in required_inputs:
+                            # Disconnect
+                            for link in input_socket.links:
+                                from_node = link.from_node
+                                from_socket = link.from_socket
+                                disconnect_inputs.append((input_socket, from_node, from_socket))
+                                material.node_tree.links.remove(link)
             
             # Select the mesh
             bpy.ops.object.select_all(action='DESELECT')
@@ -234,13 +251,21 @@ class ReprojectRebake(Operator):
             context.scene.render.bake.target = "IMAGE_TEXTURES"
             context.scene.cycles.samples = context.scene.meddle_settings.bake_samples if hasattr(context.scene, 'meddle_settings') else 32
             context.scene.render.bake.margin = bake_margin
+            context.scene.render.image_settings.color_mode = 'RGB'
             context.scene.render.bake.use_clear = True
             context.scene.render.bake.use_selected_to_active = False
             context.scene.render.bake.normal_space = 'TANGENT'
             
             # Perform bake
             try:
-                bpy.ops.object.bake(type=bake_type)
+                bpy.ops.object.bake(
+                    type=bake_type,
+                    use_clear=True,
+                    uv_layer="ReprojectedUVs",
+                    use_selected_to_active=False,
+                    cage_extrusion=0,
+                    normal_space='TANGENT'
+                )
                 logger.info(f"Successfully baked {pass_name} pass")
                 
                 # Save the image
@@ -252,7 +277,14 @@ class ReprojectRebake(Operator):
             except Exception as e:
                 logger.error(f"Failed to bake {pass_name} pass: {e}")
                 material.node_tree.nodes.remove(image_node)
+                # Reconnect disconnected inputs before continuing
+                for input_socket, from_node, from_socket in disconnect_inputs:
+                    material.node_tree.links.new(from_socket, input_socket)
                 continue
+            
+            # Reconnect previously disconnected inputs
+            for input_socket, from_node, from_socket in disconnect_inputs:
+                material.node_tree.links.new(from_socket, input_socket)
         
         # Clean up and reconnect nodes with baked textures
         if baked_images:
