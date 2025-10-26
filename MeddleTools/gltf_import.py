@@ -1,7 +1,7 @@
 import bpy
 from os import path
 
-from . import node_configs
+from .node_setup import node_configs
 from . import blend_import
 from . import lighting
 
@@ -86,17 +86,9 @@ class ModelImport(bpy.types.Operator):
     bl_idname = "meddle.import_gltf"
     bl_label = "Import Model"    
     bl_description = "Import GLTF/GLB files exported from Meddle, automatically applying shaders"
-    #filepath: bpy.props.StringProperty(subtype='FILE_PATH')
     files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
-    
-    # Class variables for async import state
-    _import_queue = []
-    _current_import_index = 0
-    _timer = None
-    _context = None
-    _progress_started = False
 
     def invoke(self, context, event):
         if context is None:
@@ -110,15 +102,12 @@ class ModelImport(bpy.types.Operator):
             return {'CANCELLED'}
         
         # Prepare the import queue
-        self._import_queue = []
+        import_queue = []
         for file in self.files:
             filepath = path.join(self.directory, file.name)
-            self._import_queue.append(filepath)
+            import_queue.append(filepath)
         
-        self._current_import_index = 0
-        self._context = context
-        
-        if not self._import_queue:
+        if not import_queue:
             return {'CANCELLED'}
         
         # Import shaders once at the beginning
@@ -128,103 +117,104 @@ class ModelImport(bpy.types.Operator):
             print(f"Error importing shaders: {e}")
             return {'CANCELLED'}
         
-        # Start the async import process
-        print(f"Starting import of {len(self._import_queue)} files...")
-        # Begin a progress indicator in the UI so the user can see activity
+        # Start the import process
+        print(f"Starting import of {len(import_queue)} files...")
+        
+        # Set cursor to show progress/wait state
+        context.window.cursor_modal_set('WAIT')
+        
+        # Progress calculation: each file gets 2 chunks (import + material application)
+        # Total chunks = len(import_queue) * 2
+        progress_started = False
+        current_progress = 0.0
+        total_chunks = len(import_queue) * 2
+        
         try:
-            context.window_manager.progress_begin(len(self._import_queue))
-            self._progress_started = True
+            context.window_manager.progress_begin(0, total_chunks)
+            progress_started = True
         except Exception:
-            # Some Blender contexts may not support progress APIs in all areas; fall back to prints
-            self._progress_started = False
+            pass
 
-        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
-        context.window_manager.modal_handler_add(self)
         # Report to the user in the info area
         try:
-            self.report({'INFO'}, f"Starting import of {len(self._import_queue)} files...")
+            self.report({'INFO'}, f"Starting import of {len(import_queue)} files...")
         except Exception:
             pass
 
-        return {'RUNNING_MODAL'}
-    
-    def modal(self, context, event):
-        if event.type == 'TIMER':
-            # Process one file from the queue
-            if self._current_import_index < len(self._import_queue):
-                filepath = self._import_queue[self._current_import_index]
+        # Process each file
+        for index, filepath in enumerate(import_queue):
+            try:
+                # Calculate progress range for this file
+                chunk_start = index * 2
+                chunk_mid = chunk_start + 1
+                chunk_end = chunk_start + 2
                 
-                try:
-                    self._import_single_file(filepath, context)
-                    print(f"Imported file {self._current_import_index + 1}/{len(self._import_queue)}: {path.basename(filepath)}")
-                    # update the UI progress and operator report
+                # Set progress to start of this file's import
+                if progress_started:
                     try:
-                        if self._progress_started:
-                            context.window_manager.progress_update(self._current_import_index + 1)
-                            # Force UI redraw so progress shows between imports
-                            try:
-                                for area in context.window.screen.areas:
-                                    area.tag_redraw()
-                            except Exception:
-                                # Fallback to redraw operator if available
-                                try:
-                                    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-                                except Exception:
-                                    pass
+                        context.window_manager.progress_update(chunk_start)
                     except Exception:
                         pass
-
-                    try:
-                        self.report({'INFO'}, f"Imported {path.basename(filepath)} ({self._current_import_index + 1}/{len(self._import_queue)})")
-                    except Exception:
-                        pass
-                except Exception as e:
-                    print(f"Error importing {filepath}: {e}")
                 
-                self._current_import_index += 1
+                # Import file and apply materials with granular progress
+                mesh_count = self.import_single_file(filepath, context, chunk_mid, chunk_end, progress_started, context.window_manager if progress_started else None)
                 
-                # Continue processing
-                return {'PASS_THROUGH'}
-            else:
-                # All files processed, cleanup and finish
-                self._cleanup(context)
-                print("Import completed!")
+                print(f"Imported file {index + 1}/{len(import_queue)}: {path.basename(filepath)} ({mesh_count} meshes)")
+                
+                # Restore cursor state after import (GLTF import may have changed it)
                 try:
-                    self.report({'INFO'}, "Import completed")
+                    context.window.cursor_modal_set('WAIT')
                 except Exception:
                     pass
-                return {'FINISHED'}
+
+                try:
+                    self.report({'INFO'}, f"Imported {path.basename(filepath)} ({index + 1}/{len(import_queue)})")
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"Error importing {filepath}: {e}")
+                try:
+                    self.report({'WARNING'}, f"Failed to import {path.basename(filepath)}: {e}")
+                except Exception:
+                    pass
+                # Restore cursor state even after error
+                try:
+                    context.window.cursor_modal_set('WAIT')
+                except Exception:
+                    pass
         
-        return {'PASS_THROUGH'}
-    
-    def cancel(self, context):
-        self._cleanup(context)
-        print("Async import cancelled!")
+        # Cleanup
         try:
-            self.report({'WARNING'}, "Async import cancelled")
-        except Exception:
-            pass
-        return {'CANCELLED'}
-    
-    def _cleanup(self, context):
-        """Clean up timer and reset state"""
-        if self._timer:
-            context.window_manager.event_timer_remove(self._timer)
-            self._timer = None
-        # End progress indicator if started
-        try:
-            if self._progress_started:
+            if progress_started:
                 context.window_manager.progress_end()
         except Exception:
             pass
-
-        self._progress_started = False
-        self._import_queue = []
-        self._current_import_index = 0
-        self._context = None
+        
+        # Restore cursor to normal
+        context.window.cursor_modal_restore()
+        
+        print("Import completed!")
+        try:
+            self.report({'INFO'}, "Import completed")
+        except Exception:
+            pass
+        
+        return {'FINISHED'}
     
-    def _import_single_file(self, filepath, context):
-        """Import a single GLTF file and process it"""
+    def import_single_file(self, filepath, context, chunk_mid, chunk_end, progress_started, wm):
+        """Import a single GLTF file and process it
+        
+        Args:
+            filepath: Path to the GLTF file
+            context: Blender context
+            chunk_mid: Progress value after import (before materials)
+            chunk_end: Progress value after all materials applied
+            progress_started: Whether progress tracking is active
+            wm: Window manager for progress updates
+        
+        Returns:
+            Number of meshes processed
+        """
         print(f"GLTF Path: {filepath}")
         
         cache_dir = path.join(path.dirname(filepath), "cache")
@@ -235,18 +225,38 @@ class ModelImport(bpy.types.Operator):
         # Import the GLTF file
         bpy.ops.import_scene.gltf(filepath=filepath, bone_heuristic='TEMPERANCE')
         
+        # Update progress to chunk_mid (import complete)
+        if progress_started and wm:
+            try:
+                wm.progress_update(chunk_mid)
+            except Exception:
+                pass
+        
         # Get newly imported objects
         current_selected_copy = list(context.selected_objects)
         newly_imported = [obj for obj in current_selected_copy if obj not in original_selection]
         
         # Process imported meshes
         imported_meshes = [obj for obj in newly_imported if obj.type == 'MESH']
-        for mesh in imported_meshes:
+        mesh_count = len(imported_meshes)
+        
+        # Calculate granular progress increment for each mesh
+        # Progress goes from chunk_mid to chunk_end over all meshes
+        for mesh_index, mesh in enumerate(imported_meshes):
             if mesh is None:
                 continue
             
             try:
                 node_configs.map_mesh(mesh, cache_dir)
+                
+                # Update progress granularly between chunk_mid and chunk_end
+                if progress_started and wm and mesh_count > 0:
+                    progress_fraction = (mesh_index + 1) / mesh_count
+                    current_progress = chunk_mid + (chunk_end - chunk_mid) * progress_fraction
+                    try:
+                        wm.progress_update(current_progress)
+                    except Exception:
+                        pass
             except Exception as e:
                 print(f"Error mapping mesh {mesh.name}: {e}")
         
@@ -267,6 +277,8 @@ class ModelImport(bpy.types.Operator):
                 setCollection(obj, context)
             except Exception as e:
                 print(f"Error setting collection for {obj.name}: {e}")
+        
+        return mesh_count
             
 class ApplyToSelected(bpy.types.Operator):
     bl_idname = "meddle.apply_to_selected"

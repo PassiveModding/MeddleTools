@@ -31,10 +31,10 @@ class JoinByMaterial(Operator):
             
             # If only one object is selected, use the active material approach
             if len(selected_meshes) == 1:
-                return self._join_by_active_material(context, selected_meshes[0])
+                return self.join_by_active_material(context, selected_meshes[0])
             
             # Multiple objects selected - group by materials and join each group
-            return self._join_multiple_by_materials(context, selected_meshes)
+            return self.join_multiple_by_materials(context, selected_meshes)
             
         except Exception as e:
             error_msg = f"Unexpected error in join by material: {str(e)}"
@@ -42,7 +42,7 @@ class JoinByMaterial(Operator):
             logger.error(error_msg)
             return {'CANCELLED'}
     
-    def _join_by_active_material(self, context, active_obj):
+    def join_by_active_material(self, context, active_obj):
         """Join objects that share the active material of the given object"""
         # Get the active material
         if not active_obj.data.materials:
@@ -77,14 +77,14 @@ class JoinByMaterial(Operator):
             return {'FINISHED'}
         
         # Join the objects
-        joined_count = self._perform_join(context, active_obj, objects_to_join)
+        joined_count = self.perform_join(context, active_obj, objects_to_join)
         if joined_count >= 0:
             self.report({'INFO'}, f"Joined {joined_count} objects using material '{target_material.name}'")
             return {'FINISHED'}
         else:
             return {'CANCELLED'}
     
-    def _join_multiple_by_materials(self, context, selected_meshes):
+    def join_multiple_by_materials(self, context, selected_meshes):
         """Group selected objects by materials and join each group"""
         # Build material groups from selected objects
         material_groups = {}
@@ -120,7 +120,7 @@ class JoinByMaterial(Operator):
             target_obj = objects[0]
             objects_to_join = objects[1:]
             
-            joined_count = self._perform_join(context, target_obj, objects_to_join)
+            joined_count = self.perform_join(context, target_obj, objects_to_join)
             if joined_count >= 0:
                 total_joined += joined_count
                 groups_processed += 1
@@ -133,7 +133,7 @@ class JoinByMaterial(Operator):
             self.report({'ERROR'}, "Failed to join any material groups")
             return {'CANCELLED'}
     
-    def _perform_join(self, context, target_obj, objects_to_join):
+    def perform_join(self, context, target_obj, objects_to_join):
         """Perform the actual join operation, returns number of objects joined or -1 on error"""
         try:
             # Store original transform of target object to preserve it
@@ -142,7 +142,7 @@ class JoinByMaterial(Operator):
             original_scale = target_obj.scale.copy()
             
             # Deselect all objects first
-            helpers._safe_deselect_all_objects(context)
+            helpers.safe_deselect_all_objects(context)
             
             # Apply transforms to objects being joined to prevent location issues
             for obj in objects_to_join:

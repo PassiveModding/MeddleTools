@@ -44,6 +44,20 @@ class MeddleSettings(bpy.types.PropertyGroup):
         subtype='FILE_PATH'
     )
     
+    bake_samples: bpy.props.IntProperty(
+        name="Bake Samples",
+        description="Number of samples to use when baking",
+        default=4,
+        min=1,
+        max=4096
+    )
+    
+    pack_alpha: bpy.props.BoolProperty(
+        name="Pack Alpha",
+        description="Pack alpha channel into diffuse texture's alpha channel instead of creating a separate alpha texture",
+        default=True
+    )
+    
 def register():
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)

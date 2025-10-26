@@ -69,7 +69,7 @@ class ImportAnimationGLTF(Operator):
         
         try:
             # Clear selection before import (safe)
-            helpers._safe_deselect_all_objects(context)
+            helpers.safe_deselect_all_objects(context)
             
             # Import using same logic as gltf_import.py - check import mode first
             logger.info("Importing animation from GLTF: %s", gltf_file_path)
@@ -206,7 +206,7 @@ class ImportAnimationGLTF(Operator):
             helpers.cleanup_imported_objects(imported_objects)
             
             # Restore previous selection; we'll activate the target armature if import succeeded
-            helpers._safe_deselect_all_objects(context)
+            helpers.safe_deselect_all_objects(context)
             for obj in original_selected:
                 if obj.name in bpy.data.objects:  # Make sure object still exists
                     obj.select_set(True)
@@ -224,7 +224,7 @@ class ImportAnimationGLTF(Operator):
                 
         except Exception as e:
             # Restore selection even if there's an error
-            helpers._safe_deselect_all_objects(context)
+            helpers.safe_deselect_all_objects(context)
             for obj in original_selected:
                 if obj.name in bpy.data.objects:
                     obj.select_set(True)
