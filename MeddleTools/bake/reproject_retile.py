@@ -2,6 +2,7 @@ import bpy
 import logging
 from bpy.types import Operator
 import numpy as np
+from . import bake_utils
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -12,6 +13,10 @@ class ReprojectRetile(Operator):
     bl_idname = "meddle.reproject_retile"
     bl_label = "Reproject and Retile"
     bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return bake_utils.require_mesh_or_armature_selected(context)
 
     def execute(self, context):
         
@@ -36,6 +41,13 @@ class ReprojectRetile(Operator):
                         material_to_object_map[mat_slot.material] = set()
                     material_to_object_map[mat_slot.material].add(obj)
 
+        for obj in meshes:
+            mesh = obj.data
+            if not mesh.uv_layers:
+                continue
+            self.handle_uv_islands(obj)
+            mesh.update()
+
         # if any object assigned to a material has uvs spanning an edge, we need to update all objects using that material that were selected
         objects_needing_material_update = set()
         materials_needing_update = set()
@@ -47,7 +59,7 @@ class ReprojectRetile(Operator):
                     continue
                 # self.handle_uv_islands(obj)
                 # mesh.update()
-                uv_islands = self.get_uv_islands(mesh)
+                uv_islands = bake_utils.get_uv_islands(mesh)
                 for island in uv_islands:
                     uv_layer = mesh.uv_layers.active.data
                     uv_coords = np.array([uv_layer[li].uv for li in island])
@@ -95,7 +107,7 @@ class ReprojectRetile(Operator):
         if not mesh.uv_layers:
             return
         uv_layer = mesh.uv_layers.active.data
-        islands = self.get_uv_islands(mesh)
+        islands = bake_utils.get_uv_islands(mesh)
         
         # Process each island
         for island in islands:
@@ -114,54 +126,6 @@ class ReprojectRetile(Operator):
                 for li in island:
                     uv = uv_layer[li].uv
                     uv_layer[li].uv = (uv[0] - offset_x, uv[1] - offset_y)
-          
-    def get_uv_islands(self, mesh):
-        visited = set()
-        islands = []
-        
-        # Build adjacency map based on UV edges
-        # Two loops are connected if they share an edge with matching UVs
-        def build_uv_adjacency():
-            adjacency = {}
-            for poly in mesh.polygons:
-                loop_indices = list(poly.loop_indices)
-                for i, li in enumerate(loop_indices):
-                    next_li = loop_indices[(i + 1) % len(loop_indices)]
-                    if li not in adjacency:
-                        adjacency[li] = []
-                    if next_li not in adjacency:
-                        adjacency[next_li] = []
-                    adjacency[li].append(next_li)
-                    adjacency[next_li].append(li)
-            return adjacency
-        
-        adjacency = build_uv_adjacency()
-        
-        def get_connected_loops(start_loop_index):
-            to_visit = [start_loop_index]
-            island_loops = set()
-            while to_visit:
-                loop_index = to_visit.pop()
-                if loop_index in visited:
-                    continue
-                visited.add(loop_index)
-                island_loops.add(loop_index)
-                
-                # Add adjacent loops (within same polygon)
-                if loop_index in adjacency:
-                    for adjacent_li in adjacency[loop_index]:
-                        if adjacent_li not in visited:
-                            to_visit.append(adjacent_li)
-            return island_loops
-        
-        # Find all islands
-        for poly in mesh.polygons:
-            for loop_index in poly.loop_indices:
-                if loop_index not in visited:
-                    island_loops = get_connected_loops(loop_index)
-                    islands.append(island_loops)
-                    
-        return islands
 
     def handle_uv_edges(self, mesh):       
         """Handle UV edges by tiling textures and adjusting UVs to fit within 0-1 range"""
@@ -171,7 +135,7 @@ class ReprojectRetile(Operator):
         logger.info(f"Handling UV edges for object: {mesh.name}")
 
         uv_layer = mesh.uv_layers.active.data
-        islands = self.get_uv_islands(mesh)
+        islands = bake_utils.get_uv_islands(mesh)
         
         # Normalize UV islands to 0-2 range
         for island in islands:
@@ -222,7 +186,7 @@ class ReprojectRetile(Operator):
             if "_array" in original_image.name:
                 continue
             # if image mode is not REPEAT skip
-            if tex_node.extension == "REPEAT":            
+            if tex_node.extension == "REPEAT" or tex_node.extension == "CLIP":           
                 tiled_image_name = f"RETILE_2x2_{original_image.name}"
                 
                 # Check if tiled version already exists
@@ -231,7 +195,12 @@ class ReprojectRetile(Operator):
                     continue
                 
                 # Create 2x2 tiled version of the texture
-                tiled_image = self.create_tiled_texture(original_image, tiled_image_name)
+                tiled_image = None
+                if tex_node.extension == "CLIP":
+                    tiled_image = self.create_clip_tiled_texture(original_image, tiled_image_name)
+                elif tex_node.extension == "REPEAT":
+                    tiled_image = self.create_tiled_texture(original_image, tiled_image_name)
+                    
                 if tiled_image:
                     tex_node.image = tiled_image
                     logger.info(f"Created tiled texture: {tiled_image_name}")
@@ -239,6 +208,39 @@ class ReprojectRetile(Operator):
                 logger.info(f"Skipping texture {original_image.name} with extension {tex_node.extension}")
                 
         return material
+    
+    def create_clip_tiled_texture(self, original_image, new_name):
+        """Create a 2x2 tiled version of the input image for CLIP extension"""
+        if not original_image or not original_image.size[0] or not original_image.size[1]:
+            logger.warning(f"Invalid image for tiling: {original_image.name if original_image else 'None'}")
+            return None
+        
+        width = original_image.size[0]
+        height = original_image.size[1]
+        new_width = width * 2
+        new_height = height * 2
+        
+        # Create new image
+        new_image = bpy.data.images.new(new_name, width=new_width, height=new_height, alpha=True)
+        
+        # Copy color space settings and alpha mode first
+        new_image.colorspace_settings.name = original_image.colorspace_settings.name
+        new_image.alpha_mode = original_image.alpha_mode
+
+        # Only copy into lower-left quadrant
+        original_pixels = np.array(original_image.pixels[:], dtype=np.float32)
+        original_pixels = original_pixels.reshape((height, width, 4))
+        
+        # Create a blank 2x2 canvas (initialized to zeros/black with full alpha)
+        new_pixels = np.zeros((new_height, new_width, 4), dtype=np.float32)
+        
+        # Copy original image into the lower-left quadrant (0,0 to width, height)
+        new_pixels[0:height, 0:width, :] = original_pixels
+        
+        new_image.pixels.foreach_set(new_pixels.ravel())
+        new_image.pack()
+        
+        return new_image
     
     def create_tiled_texture(self, original_image, new_name):
         """Create a 2x2 tiled version of the input image"""
@@ -252,7 +254,11 @@ class ReprojectRetile(Operator):
         new_height = height * 2
         
         # Create new image
-        new_image = bpy.data.images.new(new_name, width=new_width, height=new_height)
+        new_image = bpy.data.images.new(new_name, width=new_width, height=new_height, alpha=True)
+        
+        # Copy color space settings and alpha mode first
+        new_image.colorspace_settings.name = original_image.colorspace_settings.name
+        new_image.alpha_mode = original_image.alpha_mode
         
         # Reshape original pixels into (height, width, 4) array
         original_pixels = np.array(original_image.pixels[:], dtype=np.float32)
@@ -265,10 +271,6 @@ class ReprojectRetile(Operator):
         # Assign pixels directly using foreach_set (much faster than list conversion)
         new_image.pixels.foreach_set(new_pixels.ravel())
         new_image.pack()
-        
-        # copy color space settings and alpha mode
-        new_image.colorspace_settings.name = original_image.colorspace_settings.name
-        new_image.alpha_mode = original_image.alpha_mode
         
         return new_image
         

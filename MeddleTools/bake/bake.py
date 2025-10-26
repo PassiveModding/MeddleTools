@@ -1,9 +1,8 @@
 from calendar import c
+from . import bake_utils
 import bpy
 import logging
 from bpy.types import Operator
-import bmesh
-from mathutils import Vector
 import math
 import numpy as np
 import os
@@ -36,12 +35,7 @@ class RunBake(Operator):
     
     @classmethod
     def poll(cls, context):
-        # require .blend file to be saved
-        is_saved = bpy.data.is_saved
-        # require either armature OR mesh to be selected
-        has_valid_selection = any(obj.type in {'ARMATURE', 'MESH'} for obj in context.selected_objects)
-        return is_saved and has_valid_selection
-        
+        return bpy.data.is_saved and bake_utils.require_mesh_or_armature_selected(context)
     
     def execute(self, context):
         wm = context.window_manager
@@ -89,7 +83,7 @@ class RunBake(Operator):
             logger.info(f"Created collection: {collection_name}")
             
             self.update_progress(context, 10, f"Duplicating and processing {len(mesh_objects)} mesh(es)...")
-            (armature_copy, mesh_copies, material_copies) = self.duplicateArmatureAndMeshes(context, armature, mesh_objects, materials, bake_collection)
+            (armature_copy, mesh_copies, material_copies) = self.duplicate_armature_and_meshes(context, armature, mesh_objects, materials, bake_collection)
             
             total_materials = len(material_copies)
             current_material = 0
@@ -103,24 +97,19 @@ class RunBake(Operator):
                     continue
                 if len(meshes_using_material) > 1:
                     logger.info(f"Multiple meshes use material {original_name}, joining for baking.")
-                    raise Exception("Should not reach here, joining handled in duplicateArmatureAndMeshes")
+                    raise Exception("Should not reach here, joining handled in duplicate_armature_and_meshes")
 
                 progress = 20 + int((current_material / total_materials) * 50)
                 self.update_progress(context, progress, f"  Baking material {current_material}/{total_materials}: {original_name}...")
-                self.bakeMaterial(context, material_copy, meshes_using_material[0])
+                self.bake_material(context, material_copy, meshes_using_material[0])
             
             self.update_progress(context, 70, "Joining all meshes...")
             # Join all meshes into one
             joined_mesh = self.join_all_meshes(context, mesh_copies, armature_copy)
             mesh_copies = [joined_mesh]  # Update mesh_copies to contain only the joined mesh
             
-            self.update_progress(context, 85, "Exporting FBX...")
-            # Export the baked collection to FBX
-            fbx_path = self.export_to_fbx(context, bake_collection, collection_name, armature_copy, mesh_copies)
-            
             self.update_progress(context, 95, f"Bake complete! Created collection: {collection_name}")
-            self.report({'INFO'}, f"Exported to: {fbx_path}")
-
+            self.report({'INFO'}, f"Bake complete! Created collection: {collection_name}")
             return {'FINISHED'}
         finally:
             wm.progress_end()
@@ -301,7 +290,7 @@ class RunBake(Operator):
         
         return fbx_path
     
-    def duplicateArmatureAndMeshes(self, context, armature, mesh_objects, materials, bake_collection):        
+    def duplicate_armature_and_meshes(self, context, armature, mesh_objects, materials, bake_collection):        
         # duplicate the armature and mesh objects
         self.report({'INFO'}, f"  Duplicating armature and meshes...")
         armature_copy = None
@@ -370,8 +359,6 @@ class RunBake(Operator):
                 self.report({'ERROR'}, f"Failed to create UVs for {joined_mesh.name}")
                 return (None, [], {})
             
-            # Merge vertices with duplicate UV coordinates
-            self.fix_uvs(context, joined_mesh, "UVMap")
             joined_meshes.append(joined_mesh)
                 
         # assign bake materials to mesh copies
@@ -390,87 +377,7 @@ class RunBake(Operator):
 
         return (armature_copy, joined_meshes, material_copies)
 
-    def fix_uvs(self, context, mesh, map_name):
-        # 1. Find all uv islands
-        uv_islands = {}
-        bm = bmesh.new()
-        bm.from_mesh(mesh.data)
-        uv_layer = bm.loops.layers.uv.get(map_name)
-        
-        if not uv_layer:
-            logger.warning(f"No UV layer named {map_name} found on mesh {mesh.name}")
-            bm.free()
-            return
-        
-        for face in bm.faces:
-            vertex_set = frozenset(loop.vert.index for loop in face.loops)
-            if vertex_set not in uv_islands:
-                uv_islands[vertex_set] = set()
-            for loop in face.loops:
-                uv_islands[vertex_set].add(loop.vert)
-                
-        # 2. Get island bounding box
-        for key, verts in uv_islands.items():
-            if len(verts) < 2:
-                continue
-            
-            min_uv = Vector((float('inf'), float('inf')))
-            max_uv = Vector((-float('inf'), -float('inf')))
-            for vert in verts:
-                for loop in vert.link_loops:
-                    uv = loop[uv_layer].uv
-                    min_uv.x = min(min_uv.x, uv.x)
-                    min_uv.y = min(min_uv.y, uv.y)
-                    max_uv.x = max(max_uv.x, uv.x)
-                    max_uv.y = max(max_uv.y, uv.y)
-            
-            # check if island exceeds 0-1 range
-            if min_uv.x >= 0.0 and min_uv.y >= 0.0 and max_uv.x <= 1.0 and max_uv.y <= 1.0:
-                continue  # already within 0-1 range
-            
-            def fix_boundary_tile(verts, uv_layer, min_uv, max_uv):
-                # shift the max uv to be within the tile of min uv
-                for vert in verts:
-                    for loop in vert.link_loops:
-                        uv = loop[uv_layer].uv
-                        # only adjust uvs that are outside the tile
-                        # ex. if uv.x = 2.1 and tile_offset_x = 2, adjust to 2.0
-                        if uv.x > math.floor(min_uv.x) + 1.0: # if 1.1 > 0 + 1
-                            uv.x = math.floor(uv.x)
-                        if uv.y > math.floor(min_uv.y) + 1.0:
-                            uv.y = math.floor(uv.y)
-                                        
-            # Check if island crosses tile boundaries (e.g., min_uv.x = 1.9, max_uv.x = 2.1)
-            x_tile_diff = math.floor(max_uv.x) - math.floor(min_uv.x)
-            y_tile_diff = math.floor(max_uv.y) - math.floor(min_uv.y)
-            island_exceeds_tile = (x_tile_diff > 1) or (y_tile_diff > 1)
-            if island_exceeds_tile:
-                logger.error(f"UV island on mesh {mesh.name} exceeds multiple tile boundaries, cannot fix automatically.")
-                continue
-            
-            island_crosses_boundary = (x_tile_diff > 0) or (y_tile_diff > 0)
-            if island_crosses_boundary:
-                fix_boundary_tile(verts, uv_layer, min_uv, max_uv)
-                continue
-            
-            # Now normalize to 0-1 range if needed
-            island_exists_outside_0_1 = (min_uv.x < 0.0 or min_uv.y < 0.0 or max_uv.x > 1.0 or max_uv.y > 1.0)
-            if island_exists_outside_0_1:
-                # Calculate tile offset to move to 0-1 range
-                tile_offset_x = math.floor(min_uv.x)
-                tile_offset_y = math.floor(min_uv.y)
-                
-                # Shift uvs to 0-1 range
-                for vert in verts:
-                    for loop in vert.link_loops:
-                        uv = loop[uv_layer].uv
-                        uv.x = uv.x - tile_offset_x
-                        uv.y = uv.y - tile_offset_y
-            
-        bm.to_mesh(mesh.data)
-        bm.free()
-
-    def bakeMaterial(self, context, material, joined_mesh):
+    def bake_material(self, context, material, joined_mesh):
         logger.info(f"Baking material: {material.name}")
         # check for principled BSDF node
         if not material.use_nodes:
@@ -759,7 +666,6 @@ class RunBake(Operator):
         """Ensure the mesh has a UV layer, create one if missing"""
         
         if uv_layer_name in mesh_obj.data.uv_layers:
-            logger.info(f"UV layer '{uv_layer_name}' already exists for {mesh_obj.name}")
             return True
         
         logger.info(f"UV layer '{uv_layer_name}' not found for {mesh_obj.name}, generating UVs...")

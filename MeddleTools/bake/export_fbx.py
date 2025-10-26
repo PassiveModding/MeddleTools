@@ -1,3 +1,4 @@
+from . import bake_utils
 import bpy
 import logging
 from bpy.types import Operator
@@ -33,10 +34,8 @@ class ExportFBX(Operator):
     
     @classmethod
     def poll(cls, context):
-        """Check if operation can be executed"""
-        # Require at least one mesh or armature selected
-        return any(obj.type in {'MESH', 'ARMATURE'} for obj in context.selected_objects)
-    
+        return bake_utils.require_mesh_or_armature_selected(context)
+        
     def execute(self, context):
         """Execute the FBX export operation"""
         if not self.directory:

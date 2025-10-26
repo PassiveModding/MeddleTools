@@ -13,44 +13,43 @@ class MeddleBakePanel(bpy.types.Panel):
     
     def draw(self, context):
         layout = self.layout
-        row = layout.row()
-        # warning to disable decal or other uv1 relayed layers to avoid baking issues
-        row.label(text="Due to symmetry of faces, decals may bake incorrectly.", icon='ERROR')
-        row = layout.row()
-        row.label(text="Please disable decal or other UV1 relayed layers before baking", icon='ERROR')
-
-        row = layout.row()
-        row.prop(context.scene.meddle_settings, "bake_samples")
+        settings = context.scene.meddle_settings
         
-        row = layout.row()        
-        row.operator(RunBake.bl_idname, text="Run Bake")
-        # if project is not saved, show message to save first
+        # UV Reproject and Retile Section
+        box = layout.box()
+        box.label(text="UV Operations", icon='UV')
+        box.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
+        
+        # Baking Section
+        box = layout.box()
+        box.label(text="Baking", icon='RENDER_STILL')
+        
+        # Warning message in a sub-box
+        if True:  # Always show warning
+            col = box.column(align=True)
+            col.alert = True
+            col.label(text="Warning: Decals may bake incorrectly", icon='ERROR')
+            col.label(text="due to face symmetry. Disable UV1")
+            col.label(text="related layers before baking.")
+            box.separator(factor=0.5)
+        
+        # Project save warning
         if not bpy.data.is_saved:
-            row = layout.row()
-            row.label(text="Please save the project before baking.", icon='ERROR')
+            col = box.column(align=True)
+            col.alert = True
+            col.label(text="Save project before baking!", icon='ERROR')
+            box.separator(factor=0.5)
         
-        # Separator for atlas section
-        layout.separator()
+        box.prop(settings, "bake_samples")
+        box.operator(RunBake.bl_idname, text="Run Bake", icon='RENDER_STILL')
         
-        row = layout.row()
+        # Texture Atlas Section
+        box = layout.box()
+        box.label(text="Texture Atlas", icon='TEXTURE')
+        box.prop(settings, "pack_alpha")
+        box.operator(RunAtlas.bl_idname, text="Create Atlas from Selection", icon='TEXTURE')
         
-        row = layout.row()
-        row.label(text="Texture Atlas", icon='TEXTURE')
-        
-        row = layout.row()
-        row.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
-
-        row = layout.row()
-        row.prop(context.scene.meddle_settings, "pack_alpha")
-        
-        row = layout.row()
-        row.operator(RunAtlas.bl_idname, text="Create Atlas from Selection")
-        
-        # Separator for export section
-        layout.separator()
-        
-        row = layout.row()
-        row.label(text="Export", icon='EXPORT')
-        
-        row = layout.row()
-        row.operator(ExportFBX.bl_idname, text="Export FBX with Textures")
+        # Export Section
+        box = layout.box()
+        box.label(text="Export", icon='EXPORT')
+        box.operator(ExportFBX.bl_idname, text="Export FBX with Textures", icon='EXPORT')
