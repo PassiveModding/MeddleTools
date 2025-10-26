@@ -3,6 +3,7 @@ from .bake import RunBake
 from .atlas import RunAtlas
 from .export_fbx import ExportFBX
 from .reproject_retile import ReprojectRetile
+from .reproject_rebake import ReprojectRebake
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -19,6 +20,7 @@ class MeddleBakePanel(bpy.types.Panel):
         box = layout.box()
         box.label(text="UV Operations", icon='UV')
         box.operator(ReprojectRetile.bl_idname, text="Reproject and Retile UVs")
+        box.operator(ReprojectRebake.bl_idname, text="Reproject and Rebake Textures")
         
         # Baking Section
         box = layout.box()
