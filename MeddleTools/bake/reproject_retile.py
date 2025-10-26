@@ -38,6 +38,7 @@ class ReprojectRetile(Operator):
 
         # if any object assigned to a material has uvs spanning an edge, we need to update all objects using that material that were selected
         objects_needing_material_update = set()
+        materials_needing_update = set()
         for material, objs in material_to_object_map.items():
             needs_update = False
             for obj in objs:
@@ -63,27 +64,25 @@ class ReprojectRetile(Operator):
             if needs_update:
                 for obj in objs:
                     objects_needing_material_update.add(obj)
-                
+                    for mat_slot in obj.material_slots:
+                        materials_needing_update.add(mat_slot.material)
+                        
+        meshes_needing_uv_update = set()
         for obj in objects_needing_material_update:
-            self.handle_uv_edges(obj)
-            mesh = obj.data
+            meshes_needing_uv_update.add(obj.data)
+
+        for mesh in meshes_needing_uv_update:
+            self.handle_uv_edges(mesh)
             mesh.update()
-            
-        # only process materials whose objects needed update
-        unique_materials = set()
-        for obj in objects_needing_material_update:
-            for mat_slot in obj.material_slots:
-                if mat_slot.material:
-                    unique_materials.add(mat_slot.material)
 
         # Process each unique material
         new_materials = {}
-        for material in unique_materials:
+        for material in materials_needing_update:
             new_material = self.process_material(material)
             new_materials[material] = new_material
             
         # Apply new materials to objects
-        for obj in objects_needing_material_update:
+        for obj in meshes:
             for mat_slot in obj.material_slots:
                 if mat_slot.material in new_materials:
                     mat_slot.material = new_materials[mat_slot.material]
@@ -164,12 +163,13 @@ class ReprojectRetile(Operator):
                     
         return islands
 
-    def handle_uv_edges(self, obj):       
+    def handle_uv_edges(self, mesh):       
         """Handle UV edges by tiling textures and adjusting UVs to fit within 0-1 range"""
-        mesh = obj.data
         if not mesh.uv_layers:
             return
-        
+
+        logger.info(f"Handling UV edges for object: {mesh.name}")
+
         uv_layer = mesh.uv_layers.active.data
         islands = self.get_uv_islands(mesh)
         
@@ -192,7 +192,7 @@ class ReprojectRetile(Operator):
         # Check if any UVs are still outside 0-2 range after normalization
         all_uvs = np.array([uv_layer[li].uv for li in range(len(uv_layer))])
         if np.any(all_uvs < 0) or np.any(all_uvs > 2):
-            logger.warning(f"Object {obj.name}: Some UVs are outside 0-2 range after normalization. Min: {all_uvs.min(axis=0)}, Max: {all_uvs.max(axis=0)}")
+            logger.warning(f"Mesh {mesh.name}: Some UVs are outside 0-2 range after normalization. Min: {all_uvs.min(axis=0)}, Max: {all_uvs.max(axis=0)}")
         
         # Scale down all UVs to fit within 0-1 range
         for li in range(len(uv_layer)):
