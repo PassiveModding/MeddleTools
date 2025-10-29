@@ -64,12 +64,13 @@ jobs:
             MeddleTools-${{ github.ref_name }}.zip
 
       - name: Push Changes to Main
-        working-directory: MeddleTools/
+        working-directory: .
         run: |
-          git add blender_manifest.toml
+          git add MeddleTools/blender_manifest.toml
+          git add repo.json
 
           git config --local user.name "github-actions [bot]"
           git config --local user.email "github-actions@users.noreply.github.com"
-          git commit -m "Update blender_manifest.toml for ${{ github.ref_name }}"
+          git commit -m "Update versions to ${{ github.ref_name }}"
 
           git push origin HEAD:main
