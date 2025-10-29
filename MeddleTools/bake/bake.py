@@ -476,7 +476,7 @@ class RunBake(Operator):
         clear = True
         selected_to_active = False
         normal_space = "TANGENT"
-        bake_margin = int(math.ceil(0.0078125 * max(max_image_size)))
+        bake_margin = bake_utils.calculate_bake_margin(max_image_size)
         required_inputs = []
         remap_target_socket_name = None
         logger.info(f"Bake margin set to: {bake_margin} pixels")
@@ -612,24 +612,17 @@ class RunBake(Operator):
         mesh.select_set(True)
         context.view_layer.objects.active = mesh
         
-        # ensure we are using cycles
-        context.scene.render.engine = 'CYCLES'
-        
-        # Set up bake settings
-        context.scene.cycles.bake_type = bake_type
-        context.scene.cycles.use_denoising = False
-        context.scene.render.bake.use_pass_direct = "DIRECT" in bake_pass_filter
-        context.scene.render.bake.use_pass_indirect = "INDIRECT" in bake_pass_filter
-        context.scene.render.bake.use_pass_color = "COLOR" in bake_pass_filter
-        context.scene.render.bake.use_pass_diffuse = "DIFFUSE" in bake_pass_filter
-        context.scene.render.bake.use_pass_emit = "EMIT" in bake_pass_filter
-        context.scene.render.bake.target = "IMAGE_TEXTURES"
-        context.scene.cycles.samples = context.scene.meddle_settings.bake_samples
-        context.scene.render.bake.margin = bake_margin
-        context.scene.render.image_settings.color_mode = 'RGB'
-        context.scene.render.bake.use_clear = clear
-        context.scene.render.bake.use_selected_to_active = selected_to_active
-        context.scene.render.bake.normal_space = normal_space               
+        # Setup bake settings using utility function
+        bake_utils.setup_bake_settings(
+            context,
+            bake_type,
+            bake_pass_filter,
+            bake_margin,
+            samples=context.scene.meddle_settings.bake_samples,
+            use_clear=clear
+        )
+        # Note: We still need to set selected_to_active since it's not standard
+        context.scene.render.bake.use_selected_to_active = selected_to_active               
         
         try:
             bpy.ops.object.bake(type=bake_type,
@@ -656,9 +649,8 @@ class RunBake(Operator):
             material.node_tree.links.new(from_socket, original_socket)
             logger.info(f"Restored {original_socket.name} connection after {bake_name} bake")
         
-        # Then, reconnect previously disconnected inputs
-        for input_socket, from_node, from_socket in disconnect_inputs:
-            material.node_tree.links.new(from_socket, input_socket)
+        # Then, reconnect previously disconnected inputs using utility function
+        bake_utils.reconnect_inputs(disconnect_inputs)
         
         return image_node
 

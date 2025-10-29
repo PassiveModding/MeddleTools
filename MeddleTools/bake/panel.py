@@ -3,6 +3,7 @@ from .bake import RunBake
 from .atlas import RunAtlas
 from .export_fbx import ExportFBX
 from .reproject_retile import ReprojectRetile
+from .reproject_rebake import ReprojectRebake
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -48,6 +49,7 @@ class MeddleBakePanel(bpy.types.Panel):
         box.label(text="Texture Atlas", icon='TEXTURE')
         box.prop(settings, "pack_alpha")
         box.operator(RunAtlas.bl_idname, text="Create Atlas from Selection", icon='TEXTURE')
+        box.operator(ReprojectRebake.bl_idname, text="Reproject and Rebake Atlas", icon='TEXTURE')
         
         # Export Section
         box = layout.box()
