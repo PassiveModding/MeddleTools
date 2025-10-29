@@ -6,28 +6,23 @@
 This project is a Blender addon that provides various helper functions to assist working with [Meddle](https://github.com/PassiveModding/Meddle) exports.
 
 ## Installation
-- Head to [Releases](https://github.com/PassiveModding/MeddleTools/releases)
-- Download the latest MeddleTools.zip
-- Install the zip in blender 4.5+ via `Edit > Preferences > Add-Ons > Install From Disk...`
+1. In Blender, go to `Edit` -> `Preferences` -> `Get Extensions`
+2. Select `Repositories` drop-down and click `Add Remote Repository`
+3. Enter the following URL: `https://github.com/PassiveModding/MeddleTools/blob/main/repo.json`
+4. Click `Check for Updates on Startup`
+5. Click `Create`
+6. Search for `Meddle Tools` in and click `Install`
 
 ## Usage
 
+After installing the addon, you can find the Meddle Tools panel in the 3D Viewport under the `Meddle Tools` tab. You can display all panels by clicking the arrow icon on the right side of the viewport or pressing `N` on your keyboard.
+
 Simply click `Import .gltf/.glb` and navigate to the same folder you exported from meddle and select the `.gltf` or `.glb` file, you can select multiple files from the same folder if you need.
-
-![Usage](Assets/panel.png)
-
-If you need to re-apply the shaders, you can use the shaders panel. If applying to multiple meshes, select them in the Layout view and click the 'Apply Shaders to Selected Objects' button. If you are in the shader view and have a material already open, select the 'Apply Shaders to Current Material' button to update only the active material. The import shaders and re-import shaders aren't typically needed as it is performed automatically.
-
-![Shaders Panel](Assets/shaderspanel.png)
-
-> NOTE: Make sure you export with Character Texture Mode set to 'raw' from the Meddle plugin
-
-![Meddle Setup](Assets/raw-mode.png)
 
 # How does MeddleTools work?
 Any models/meshes exported by the Meddle XIV plugin will have the relevant keys and values supplied by the in-game shaders attached under Custom Properties of the material once imported into Blender.
 
-In general, Meddle will spawn textures for all cached textures by referencing the `/cache` folder in your export directory. It will then make use of the other properties and hand crafted node groups imported from [MeddleTools/shaders.blend](MeddleTools/shaders.blend) to set up each material.
+In general, Meddle will spawn textures for all cached textures by referencing the `/cache` folder in your export directory. It will then make use of the other properties and hand crafted shaders imported from [MeddleTools/shaders.blend](MeddleTools/shaders.blend) to set up each material.
 
 ![Custom Properties Example](Assets/custom_properties_example.png)
 
@@ -59,7 +54,7 @@ Lower lods are not exported by Meddle and as such filling a scene with lower pol
 Meddle exported PNG files are exported using the Highest Mip level for the texture, therefore dynamic mip levels are not achievable
 
 ## Animated materials
-Lightshaft and bguvscroll materials can be animated in-game. This is not currently supported as it is rather difficult to animate these for rendering. It is technically feasable but would require significantly more reverse engineering of these shaders to get something accurate which can be translated to frame-based instead of time-based in blender.
+Lightshaft and bguvscroll materials can be animated in-game. This is not fully supported as it is rather difficult to animate these for rendering. It is technically feasable but would require significantly more reverse engineering of these shaders to get something accurate which can be translated to frame-based instead of time-based in blender.
 
 ## Unsupported shaders
 Some shaders are not yet supported. If you wish to get support them, please attempt to recreate them yourself and make a pull request or submit an issue with your research. It is extremely time consuming to reverse engineer in-game shaders and any support is welcome.
