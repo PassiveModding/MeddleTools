@@ -19,6 +19,11 @@ After installing the addon, you can find the Meddle Tools panel in the 3D Viewpo
 
 Simply click `Import .gltf/.glb` and navigate to the same folder you exported from meddle and select the `.gltf` or `.glb` file, you can select multiple files from the same folder if you need.
 
+[![Import Panel](Assets/panel.png)](Assets/panel.png)
+
+## Need help?
+If you need help using Meddle Tools, please join our [Discord server](https://discord.gg/2jnZMNVM4p) and ask in the `#meddletools-support-blender` channel.
+
 # How does MeddleTools work?
 Any models/meshes exported by the Meddle XIV plugin will have the relevant keys and values supplied by the in-game shaders attached under Custom Properties of the material once imported into Blender.
 
@@ -27,9 +32,6 @@ In general, Meddle will spawn textures for all cached textures by referencing th
 ![Custom Properties Example](Assets/custom_properties_example.png)
 
 # Limitations
-
-## Array textures
-Certain materials have properties (or color tables) which include indexes into array textures. Blender does not support indexed texture arrays so MeddleTools will spawn an individual texture for each referenced array index. Currently MeddleTools does not make use of these outside spawning the textures due to difficulties in testing and validating accuracy.
 
 ## Lights
 A lot of properties of in-game lights do not translate well to blender, I have listed them below
@@ -51,7 +53,7 @@ Light color/intensity is represented as a HDR, i.e. values could be RGB (0.5, 1.
 
 ## LODs and Mips
 Lower lods are not exported by Meddle and as such filling a scene with lower poly models is not achievable.
-Meddle exported PNG files are exported using the Highest Mip level for the texture, therefore dynamic mip levels are not achievable
+Meddle exported PNG files are exported using the Highest Mip level for the texture, therefore dynamic mip levels are not achievable.
 
 ## Animated materials
 Lightshaft and bguvscroll materials can be animated in-game. This is not fully supported as it is rather difficult to animate these for rendering. It is technically feasable but would require significantly more reverse engineering of these shaders to get something accurate which can be translated to frame-based instead of time-based in blender.
