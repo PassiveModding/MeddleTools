@@ -8,7 +8,7 @@ This project is a Blender addon that provides various helper functions to assist
 ## Installation
 - Head to [Releases](https://github.com/PassiveModding/MeddleTools/releases)
 - Download the latest MeddleTools.zip
-- Install the zip in blender 4.2+ via `Edit > Preferences > Add-Ons > Install From Disk...`
+- Install the zip in blender 4.5+ via `Edit > Preferences > Add-Ons > Install From Disk...`
 
 ## Usage
 

@@ -78,7 +78,9 @@ def updateLatestReleaseBlob():
         logger.info(f"Latest version: {latest_version} ({latest_version_name})")
     except Exception as e:
         logger.error(f"Failed to update latest release blob: {e}")
-        return False
+    
+    # Return None to prevent the timer from running again
+    return None
 
 def updateCurrentRelease():
     global current_version

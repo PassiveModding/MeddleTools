@@ -10,7 +10,7 @@ website = "https://github.com/PassiveModding/MeddleTools"
 
 tags = ["Material"]
 
-blender_version_min = "4.2.0"
+blender_version_min = "4.5.0"
 
 license = [
   "SPDX:AGPL-3.0-or-later",
