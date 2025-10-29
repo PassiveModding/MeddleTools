@@ -7,7 +7,7 @@ from . import preferences
 from . import utils
 from . import bake
 
-classes = [] + gltf_import.classes + panel.classes + blend_import.classes + utils.classes + version.classes + bake.classes
+classes = [] + gltf_import.classes + panel.classes + blend_import.classes + utils.classes + bake.classes
 
 def register():    
     for cls in classes:

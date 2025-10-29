@@ -189,19 +189,19 @@ class MeddleCreditPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         
-        section = layout.box()
-        col = section.column()
-        row = col.row()
-        row.label(text=f"Version: {version.current_version}")
-        row = col.row()
-        row.label(text=f"Latest Release ({version.latest_version})")
-        row = col.row()
-        if version.latest_version_name is not None:
-            row.label(text=f"{version.latest_version_name}")
-        else:
-            row.label(text="Unknown")
+        # section = layout.box()
+        # col = section.column()
+        # row = col.row()
+        # row.label(text=f"Version: {version.current_version}")
+        # row = col.row()
+        # row.label(text=f"Latest Release ({version.latest_version})")
+        # row = col.row()
+        # if version.latest_version_name is not None:
+        #     row.label(text=f"{version.latest_version_name}")
+        # else:
+        #     row.label(text="Unknown")
         
-        layout.separator()
+        # layout.separator()
         
         # credits
         box = layout.box()
@@ -237,20 +237,20 @@ class MeddleHeaderPanel(bpy.types.Panel):
         row.operator("wm.url_open", text="Github", icon="HELP").url = repo_url
         row.operator("wm.url_open", text="Issues", icon="BOOKMARKS").url = repo_issues_url
         
-        if version.latest_version != "Unknown" and version.current_version != "Unknown":
-            if version.latest_version != version.current_version:
-                box = layout.box()
-                col = box.column()
-                row = col.row()
-                row.label(text=f"Current version: {version.current_version}")
-                row = col.row()
-                row.label(text=f"New version available: {version.latest_version}")
-                row = col.row()
-                row.operator("wm.url_open", text="Download").url = version.GITHUB_RELEASE_PAGE_URL
-                row = col.row()
-                row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
-                row = col.row()
-                row.label(text=f"{version.latest_version_name}")
+        # if version.latest_version != "Unknown" and version.current_version != "Unknown":
+        #     if version.latest_version != version.current_version:
+        #         box = layout.box()
+        #         col = box.column()
+        #         row = col.row()
+        #         row.label(text=f"Current version: {version.current_version}")
+        #         row = col.row()
+        #         row.label(text=f"New version available: {version.latest_version}")
+        #         row = col.row()
+        #         row.operator("wm.url_open", text="Download").url = version.GITHUB_RELEASE_PAGE_URL
+        #         row = col.row()
+        #         row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
+        #         row = col.row()
+        #         row.label(text=f"{version.latest_version_name}")
                 
                 
 classes = [
