@@ -30,11 +30,21 @@ jobs:
         working-directory: MeddleTools/
         run: |
           sed -i "s/^version = .*/version = \"${{ github.ref_name }}\"/" blender_manifest.toml
-
+      
       - name: Zip Blender Plugin
         run: |
           ls
-          zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/
+          zip -r MeddleTools-${{ github.ref_name }}.zip MeddleTools/      
+      
+      - name: Update repo.json
+        working-directory: .
+        run: |          
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ github.ref_name }}\"/" repo.json
+          sed -i "s/\"archive_url\": \".*\"/\"archive_url\": \"https:\/\/github.com\/PassiveModding\/MeddleTools\/releases\/download\/${{ github.ref_name }}\/MeddleTools-${{ github.ref_name }}.zip\"/" repo.json
+          archive_size=$(stat -c%s "MeddleTools-${{ github.ref_name }}.zip")
+          sed -i "s/\"archive_size\": [0-9]*/\"archive_size\": ${archive_size}/" repo.json
+          sha256_hash=$(sha256sum "MeddleTools-${{ github.ref_name }}.zip" | awk '{ print $1 }')
+          sed -i "s/\"archive_hash\": \".*\"/\"archive_hash\": \"sha256:${sha256_hash}\"/" repo.json
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
