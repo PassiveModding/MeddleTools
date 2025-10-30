@@ -8,7 +8,10 @@ This project is a Blender addon that provides various helper functions to assist
 ## Installation
 1. In Blender, go to `Edit` -> `Preferences` -> `Get Extensions`
 2. Select `Repositories` drop-down and click `Add Remote Repository`
-3. Enter the following URL: `https://github.com/PassiveModding/MeddleTools/blob/main/repo.json`
+3. Enter the following URL: 
+```
+https://raw.githubusercontent.com/PassiveModding/MeddleTools/refs/heads/main/repo.json
+```
 4. Click `Check for Updates on Startup`
 5. Click `Create`
 6. Search for `Meddle Tools` in and click `Install`
