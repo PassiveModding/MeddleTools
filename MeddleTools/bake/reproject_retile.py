@@ -7,6 +7,16 @@ from . import bake_utils
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+def get_reproject_retile_label(context):
+    """Generate label for Reproject and Retile button based on selected meshes"""
+    meshes = bake_utils.get_all_selected_meshes(context)    
+    mesh_count = len(meshes)
+    if mesh_count == 0:
+        return "Reproject and Retile UVs (no meshes selected)"
+    elif mesh_count == 1:
+        return f"Reproject and Retile UVs (1 mesh)"
+    else:
+        return f"Reproject and Retile UVs ({mesh_count} meshes)"
 
 class ReprojectRetile(Operator):
     """Fixes uvs which sit outside the 0-1 range by updating uvs AND textures to fit within 0-1"""
@@ -18,13 +28,11 @@ class ReprojectRetile(Operator):
     def poll(cls, context):
         return bake_utils.require_mesh_or_armature_selected(context)
 
-    def execute(self, context):
-        
-        meshes = []
-        for obj in context.selected_objects:
-            if obj.type != 'MESH':
-                continue
-            meshes.append(obj)
+    def execute(self, context):        
+        meshes = bake_utils.get_all_selected_meshes(context)
+        if not meshes:
+            self.report({'WARNING'}, "No mesh objects selected")
+            return {'CANCELLED'}
             
         # since we edit materials, quicker to do it in one pass than per object
         unique_materials = set()

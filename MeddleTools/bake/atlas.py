@@ -7,10 +7,16 @@ from . import bake_utils
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-
-# Non-color texture types that need specific colorspace handling
-NON_COLOR_TYPES = {'normal', 'roughness', 'alpha'}
-
+def get_atlas_label(context):
+    """Generate label for atlas operation based on selected meshes"""
+    meshes = bake_utils.get_all_selected_meshes(context)
+    mesh_count = len(meshes)
+    if mesh_count == 0:
+        return "Create Atlas from Selection (no meshes selected)"
+    elif mesh_count == 1:
+        return f"Create Atlas from Selection (1 mesh)"
+    else:
+        return f"Create Atlas from Selection ({mesh_count} meshes)"
 
 def img_as_nparray(image):
     """Convert Blender image to numpy array (H, W, 4)"""
@@ -81,32 +87,24 @@ class RunAtlas(Operator):
         return bake_utils.require_mesh_or_armature_selected(context)
     
     def execute(self, context):
-        mesh_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
-        armature_objects = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']
-        # Include child meshes of selected armatures
-        for armature in armature_objects:
-            for obj in bpy.data.objects:
-                if obj.type == 'MESH' and obj.parent == armature:
-                    if obj not in mesh_objects:
-                        mesh_objects.append(obj)
-        
-        if not mesh_objects:
+        meshes = bake_utils.get_all_selected_meshes(context)        
+        if not meshes:
             self.report({'ERROR'}, "No mesh objects selected.")
             return {'CANCELLED'}
         
-        if len(mesh_objects) > 1:
-            self.report({'INFO'}, f"Joining {len(mesh_objects)} meshes...")
-            logger.info(f"Joining {len(mesh_objects)} meshes for atlas")
+        if len(meshes) > 1:
+            self.report({'INFO'}, f"Joining {len(meshes)} meshes...")
+            logger.info(f"Joining {len(meshes)} meshes for atlas")
             
             bpy.ops.object.select_all(action='DESELECT')
-            for obj in mesh_objects:
+            for obj in meshes:
                 obj.select_set(True)
             
-            context.view_layer.objects.active = mesh_objects[0]
+            context.view_layer.objects.active = meshes[0]
             bpy.ops.object.join()
             joined_mesh = context.view_layer.objects.active
         else:
-            joined_mesh = mesh_objects[0]
+            joined_mesh = meshes[0]
         
         atlas_name = f"Atlas_{joined_mesh.name}"
         atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
@@ -267,14 +265,6 @@ class RunAtlas(Operator):
         """Create and initialize atlas images for each texture type"""
         atlas_images = {}
         
-        # Define default colors for initialization
-        default_colors = {
-            'diffuse': (0.0, 0.0, 0.0, 1.0),
-            'normal': (0.5, 0.5, 1.0, 1.0),
-            'roughness': (0.5, 0.5, 0.5, 1.0),
-            'alpha': (1.0, 1.0, 1.0, 1.0)
-        }
-        
         for tex_type in texture_types:
             atlas_image_name = f"{atlas_name}_{tex_type}"
             atlas_image = bpy.data.images.new(
@@ -286,11 +276,17 @@ class RunAtlas(Operator):
             atlas_image.filepath = bpy.path.abspath(f"//Bake/{atlas_image_name}.png")
             atlas_image.file_format = 'PNG'
             
-            if tex_type in NON_COLOR_TYPES:
-                atlas_image.colorspace_settings.name = 'Non-Color'
+            # Get configuration from bake_utils
+            config = bake_utils.get_bake_pass_config(tex_type)
+            if config:
+                atlas_image.colorspace_settings.name = config['colorspace']
+                default_color = config['background_color']
+            else:
+                # Fallback for unknown texture types
+                atlas_image.colorspace_settings.name = 'sRGB'
+                default_color = (0.0, 0.0, 0.0, 1.0)
             
             # Initialize with default color for this texture type
-            default_color = default_colors.get(tex_type, (0.0, 0.0, 0.0, 1.0))
             rgba = np.zeros((atlas_height, atlas_width, 4), dtype=np.float32)
             rgba[:, :] = default_color
             

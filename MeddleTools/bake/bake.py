@@ -15,6 +15,17 @@ try:
 except Exception:
     pass
 
+def get_bake_label(context):
+    """Get dynamic label for RunBake operator based on selection"""
+    meshes = bake_utils.get_all_selected_meshes(context)
+    mesh_count = len(meshes)
+    if mesh_count == 0:
+        return "Run Bake (no meshes selected)"
+    elif mesh_count == 1:
+        return "Run Bake (1 mesh)"
+    else:
+        return f"Run Bake ({mesh_count} meshes)"
+
 class RunBake(Operator):
     """Run the baking process for selected objects"""
     bl_idname = "meddle.run_bake"
@@ -44,24 +55,7 @@ class RunBake(Operator):
         try:
             # Check if armature is selected
             armature = next((obj for obj in context.selected_objects if obj.type == 'ARMATURE'), None)
-            
-            if armature:
-                # Armature workflow: bake all meshes under the armature
-                logger.info(f"Starting bake process for armature: {armature.name}")
-                mesh_objects = [obj for obj in bpy.data.objects if obj.type == 'MESH' and armature.name in [mod.object.name for mod in obj.modifiers if mod.type == 'ARMATURE']]
-                
-                if not mesh_objects:
-                    self.report({'ERROR'}, "No mesh objects found under the selected armature.")
-                    return {'CANCELLED'}
-            else:
-                # Mesh workflow: bake selected meshes
-                mesh_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
-                
-                if not mesh_objects:
-                    self.report({'ERROR'}, "No armature or mesh selected.")
-                    return {'CANCELLED'}
-                
-                logger.info(f"Starting bake process for {len(mesh_objects)} selected mesh(es)")
+            mesh_objects = bake_utils.get_all_selected_meshes(context)
 
             # get all materials used by these mesh objects
             materials = set()
@@ -470,39 +464,42 @@ class RunBake(Operator):
 
     def bake_pass(self, context, material, mesh, bake_name, max_image_size):        
         logger.info(f"Baking pass: {bake_name} for material: {material.name}")
-        bake_pass_filter = {}
-        bake_type = None
-        background_color = (0, 0, 0, 1.0)        
+        
+        # Get bake pass configuration from utility function
+        pass_config = bake_utils.get_bake_pass_config(bake_name)
+        if not pass_config:
+            raise ValueError(f"Unsupported bake type: {bake_name}")
+        
+        bake_type = pass_config['bake_type']
+        background_color = pass_config['background_color']
+        bake_pass_filter = pass_config['pass_filter']
+        required_inputs = pass_config['required_inputs']
+        alpha_mode = pass_config['alpha_mode']
+        colorspace = pass_config['colorspace']
+        
         clear = True
         selected_to_active = False
         normal_space = "TANGENT"
         bake_margin = bake_utils.calculate_bake_margin(max_image_size)
-        required_inputs = []
         remap_target_socket_name = None
         logger.info(f"Bake margin set to: {bake_margin} pixels")
 
-        def create_bake_image(bake_name, background_color, width, height):
+        def create_bake_image(bake_name, background_color, width, height, alpha_mode, colorspace):
             file_name = f"Bake_{bake_name}_{material.name}.png"
             image = bpy.data.images.new(name=file_name, 
                     width=width, height=height, alpha=True)
             image.filepath = bpy.path.abspath(f"//Bake/{file_name}")
-            image.alpha_mode = "STRAIGHT"
+            image.alpha_mode = alpha_mode
             image.scale(width, height)
             image.generated_color = background_color
+            image.colorspace_settings.name = colorspace
             
             return image
         
         # create image texture node and link to bake_node
         image_node = material.node_tree.nodes.new('ShaderNodeTexImage')
         image = None
-        if bake_name == 'diffuse':
-            bake_type = 'DIFFUSE'
-            bake_pass_filter = {'COLOR'}            
-            image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1])
-            image.alpha_mode = "CHANNEL_PACKED"
-            image_node.image = image
-            required_inputs = ['Base Color', 'Alpha']
-        elif bake_name == 'normal':
+        if bake_name == 'normal':
             # workaround for now
             # find g_SamplerNormal_PngCachePath and just use that image instead of baking
             normal_image = None
@@ -528,32 +525,20 @@ class RunBake(Operator):
                 pixel_data[2, :] = 1.0  # Blue channel
                 pixel_data[3, :] = 1.0  # Alpha channel
                 
-                copied_image = create_bake_image(bake_name, background_color, normal_image.size[0], normal_image.size[1])
-                copied_image.alpha_mode = normal_image.alpha_mode
-                copied_image.colorspace_settings.name = 'Non-Color'
+                copied_image = create_bake_image(bake_name, background_color, normal_image.size[0], normal_image.size[1], alpha_mode, colorspace)
                 
                 nparray_channels_to_img(copied_image, pixel_data)
 
                 image_node.image = copied_image
                 return image_node
             else:
-                bake_type = 'NORMAL'
-                bake_pass_filter = set()
-                image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1])
-                image.alpha_mode = "CHANNEL_PACKED"
+                # Use standard baking for normal map
+                image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1], alpha_mode, colorspace)
                 image_node.image = image
-                image.colorspace_settings.name = 'Non-Color'
-                required_inputs = ['Normal']              
-        elif bake_name == 'roughness':
-            bake_type = 'ROUGHNESS'
-            bake_pass_filter = set()
-            image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1])
-            image.alpha_mode = "CHANNEL_PACKED"
-            image_node.image = image
-            image.colorspace_settings.name = 'Non-Color'
-            required_inputs = ['Roughness', 'Metallic']
         else:
-            raise ValueError(f"Unsupported bake type: {bake_name}")
+            # Standard baking for other passes (diffuse, roughness, etc.)
+            image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1], alpha_mode, colorspace)
+            image_node.image = image
         
         
         # For non-color/normal channels, remap the input to Emission for more reliable baking
