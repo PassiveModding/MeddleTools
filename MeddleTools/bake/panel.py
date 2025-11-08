@@ -49,7 +49,7 @@ class MeddleBakePanel(bpy.types.Panel):
         box.label(text="Texture Atlas", icon='TEXTURE')
         box.prop(settings, "pack_alpha")
         box.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
-        box.operator(ReprojectRebake.bl_idname, text="Reproject and Rebake Atlas")
+        # box.operator(ReprojectRebake.bl_idname, text="Reproject and Rebake Atlas")
         
         # Export Section
         box = layout.box()

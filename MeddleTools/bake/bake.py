@@ -90,18 +90,18 @@ class RunBake(Operator):
                 if not meshes_using_material:
                     continue
                 if len(meshes_using_material) > 1:
-                    logger.info(f"Multiple meshes use material {original_name}, joining for baking.")
                     raise Exception("Should not reach here, joining handled in duplicate_armature_and_meshes")
 
                 progress = 20 + int((current_material / total_materials) * 50)
+                # self.pack_uv_islands(meshes_using_material[0], "UVMap", "MeddlePackedUVs")
                 self.update_progress(context, progress, f"  Baking material {current_material}/{total_materials}: {original_name}...")
-                self.bake_material(context, material_copy, meshes_using_material[0])
+                self.bake_material(context, material_copy, meshes_using_material[0], "UVMap")
             
             self.update_progress(context, 70, "Joining all meshes...")
             # Join all meshes into one
+            for mesh in mesh_copies:
+                self.set_active_uv_layer(mesh, "UVMap")
             joined_mesh = self.join_all_meshes(context, mesh_copies, armature_copy)
-            mesh_copies = [joined_mesh]  # Update mesh_copies to contain only the joined mesh
-            
             self.update_progress(context, 95, f"Bake complete! Created collection: {collection_name}")
             self.report({'INFO'}, f"Bake complete! Created collection: {collection_name}")
             return {'FINISHED'}
@@ -190,100 +190,6 @@ class RunBake(Operator):
         logger.info(f"Copied {len(copied_images)} baked texture(s) to {textures_folder}")
         self.report({'INFO'}, f"  Copied {len(copied_images)} texture(s)")
     
-    def export_to_fbx(self, context, bake_collection, collection_name, armature_copy, mesh_copies):
-        """Export the baked collection to FBX format with textures in a dedicated folder"""
-        # Create export directory relative to the blend file
-        blend_filepath = bpy.data.filepath
-        blend_dir = os.path.dirname(blend_filepath)
-        
-        # Create a dedicated folder for this export (FBX + textures)
-        # If folder exists, find next available incremental number
-        export_folder = os.path.join(blend_dir, "Bake", collection_name)
-        
-        if os.path.exists(export_folder):
-            # Find next available incremental folder
-            counter = 1
-            while True:
-                incremental_name = f"{collection_name}_{counter:03d}"
-                export_folder = os.path.join(blend_dir, "Bake", incremental_name)
-                if not os.path.exists(export_folder):
-                    collection_name = incremental_name
-                    logger.info(f"Export folder already exists, using incremental name: {collection_name}")
-                    self.report({'INFO'}, f"  Using incremental folder: {collection_name}")
-                    break
-                counter += 1
-                if counter > 999:
-                    self.report({'ERROR'}, "Too many export folders (>999), please clean up Bake directory")
-                    return None
-        
-        os.makedirs(export_folder, exist_ok=True)
-        
-        # Create textures subfolder
-        textures_folder = os.path.join(export_folder, "textures")
-        os.makedirs(textures_folder, exist_ok=True)
-        
-        # Create FBX filename
-        fbx_filename = f"{collection_name}.fbx"
-        fbx_path = os.path.join(export_folder, fbx_filename)
-        
-        logger.info(f"Exporting to FBX: {fbx_path}")
-        logger.info(f"Textures will be saved to: {textures_folder}")
-        
-        # Copy all baked textures to the textures folder and update image paths
-        self.copy_baked_textures(mesh_copies, textures_folder)
-        
-        # Deselect all objects
-        bpy.ops.object.select_all(action='DESELECT')
-        
-        # Select all objects in the bake collection
-        objects_to_export = []
-        if armature_copy:
-            armature_copy.select_set(True)
-            objects_to_export.append(armature_copy)
-        
-        for mesh in mesh_copies:
-            mesh.select_set(True)
-            objects_to_export.append(mesh)
-        
-        # Set active object
-        if armature_copy:
-            context.view_layer.objects.active = armature_copy
-        elif mesh_copies:
-            context.view_layer.objects.active = mesh_copies[0]
-        
-        # Export FBX with appropriate settings
-        try:
-            bpy.ops.export_scene.fbx(
-                filepath=fbx_path,
-                use_selection=True,
-                global_scale=1.0,
-                apply_unit_scale=True,
-                apply_scale_options='FBX_SCALE_NONE',
-                bake_space_transform=False,
-                object_types={'ARMATURE', 'MESH'},
-                use_mesh_modifiers=True,
-                use_mesh_modifiers_render=True,
-                mesh_smooth_type='FACE',
-                use_tspace=True,
-                use_custom_props=False,
-                add_leaf_bones=False,
-                primary_bone_axis='Y',
-                secondary_bone_axis='X',
-                armature_nodetype='NULL',
-                bake_anim=False,
-                path_mode='RELATIVE',
-                embed_textures=True,
-                batch_mode='OFF'
-            )
-            logger.info(f"Successfully exported FBX to: {fbx_path}")
-            self.report({'INFO'}, f"  Exported to: {export_folder}")
-        except Exception as e:
-            logger.error(f"Failed to export FBX: {e}")
-            self.report({'WARNING'}, f"  Failed to export FBX: {e}")
-            return None
-        
-        return fbx_path
-    
     def duplicate_armature_and_meshes(self, context, armature, mesh_objects, materials, bake_collection):        
         # duplicate the armature and mesh objects
         self.report({'INFO'}, f"  Duplicating armature and meshes...")
@@ -370,8 +276,65 @@ class RunBake(Operator):
                 mesh.location.x += 1.0
 
         return (armature_copy, joined_meshes, material_copies)
+    
+    def set_active_uv_layer(self, mesh, uv_layer_name):
+        """Set the active UV layer on the mesh"""
+        if uv_layer_name in mesh.data.uv_layers:
+            uv_layer = mesh.data.uv_layers[uv_layer_name];
+            mesh.data.uv_layers.active = uv_layer
+            uv_layer.active_render = True
+            logger.info(f"Set active UV layer to {uv_layer_name} on mesh {mesh.name}")
+            return True
+        else:
+            logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")
+            return False
+    
+    def pack_uv_islands(self, mesh, uv_layer_name, new_uv_layer_name):
+        """Pack UV islands into a new UV layer"""
+        # Ensure the specified UV layer exists
+        if uv_layer_name not in mesh.data.uv_layers:
+            logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")
+            return False
+        
+        # ensure only the mesh is selected
+        bpy.ops.object.select_all(action='DESELECT')
+        mesh.select_set(True)
+        bpy.context.view_layer.objects.active = mesh
+        
+        # Create a new UV layer for packed UVs
+        if new_uv_layer_name in mesh.data.uv_layers:
+            # remove existing packed UV layer
+            mesh.data.uv_layers.remove(mesh.data.uv_layers[new_uv_layer_name])
+        
+        # Get the source UV layer
+        source_uv_layer = mesh.data.uv_layers[uv_layer_name]
+        
+        # Create new UV layer and copy data from source
+        packed_uv_layer = mesh.data.uv_layers.new(name=new_uv_layer_name)
+        
+        # Copy UV data from source layer to packed layer
+        for loop_idx in range(len(mesh.data.loops)):
+            packed_uv_layer.data[loop_idx].uv = source_uv_layer.data[loop_idx].uv.copy()
+        
+        # Set the new layer as active for packing
+        mesh.data.uv_layers.active = packed_uv_layer
+        # Pack UV islands
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.uv.select_all(action='SELECT')
+        bpy.ops.uv.pack_islands(udim_source='CLOSEST_UDIM',
+                                rotate=False,
+                                scale=True,
+                                merge_overlap=False,
+                                margin_method='SCALED',
+                                margin=0.001,
+                                pin=False,
+                                shape_method='CONCAVE')
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+        logger.info(f"Packed UV islands into layer {new_uv_layer_name} on mesh {mesh.name}")        
+        return True
 
-    def bake_material(self, context, material, joined_mesh):
+    def bake_material(self, context, material, joined_mesh, uv_layer_name):
         logger.info(f"Baking material: {material.name}")
         # check for principled BSDF node
         if not material.use_nodes:
@@ -398,8 +361,7 @@ class RunBake(Operator):
             bake_node = material.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
             bake_node.location = (material_output_node.location.x - 300, material_output_node.location.y)
             bake_node.label = f"Bake_{material.name}"
-            # fix default
-            
+            # fix defaults            
             bake_node.inputs['IOR'].default_value = 1
             bake_node.inputs['Metallic'].default_value = 0.0
             bake_node.inputs['Roughness'].default_value = 0.5
@@ -424,10 +386,10 @@ class RunBake(Operator):
         
         # bake passes
         image_nodes = []
-        diffuse_image = self.bake_pass(context, material, joined_mesh, 'diffuse', max_image_size)
+        diffuse_image = self.bake_pass(context, material, joined_mesh, 'diffuse', max_image_size, uv_layer_name)
         # alpha_image = self.bake_pass(context, material, joined_mesh, 'alpha', max_image_size)
-        normal_image = self.bake_pass(context, material, joined_mesh, 'normal', max_image_size)
-        roughness_image = self.bake_pass(context, material, joined_mesh, 'roughness', max_image_size)
+        normal_image = self.bake_pass(context, material, joined_mesh, 'normal', max_image_size, uv_layer_name)
+        roughness_image = self.bake_pass(context, material, joined_mesh, 'roughness', max_image_size, uv_layer_name)
         image_nodes.append(diffuse_image)
         # image_nodes.append(alpha_image) # this is basically redundant since alpha is in diffuse
         image_nodes.append(normal_image)
@@ -462,7 +424,7 @@ class RunBake(Operator):
         for node in original_nodes:
             material.node_tree.nodes.remove(node)
 
-    def bake_pass(self, context, material, mesh, bake_name, max_image_size):        
+    def bake_pass(self, context, material, mesh, bake_name, max_image_size, uv_layer_name):        
         logger.info(f"Baking pass: {bake_name} for material: {material.name}")
         
         # Get bake pass configuration from utility function
@@ -508,7 +470,7 @@ class RunBake(Operator):
                     normal_image = node.image
                     break
             
-            if normal_image and normal_image.has_data:
+            if normal_image and normal_image.has_data and uv_layer_name == "UVMap" and False: # Can only do workaround if using original UVs
                 def img_channels_as_nparray(image):
                     pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
                     image.pixels.foreach_get(pixel_buffer)
@@ -613,7 +575,7 @@ class RunBake(Operator):
             bpy.ops.object.bake(type=bake_type,
                                 # pass_filter=bake_pass_filter,
                                 use_clear=context.scene.render.bake.use_clear,
-                                uv_layer="UVMap",
+                                uv_layer=uv_layer_name,
                                 use_selected_to_active=context.scene.render.bake.use_selected_to_active,
                                 cage_extrusion=0,
                                 normal_space=normal_space

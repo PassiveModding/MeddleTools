@@ -480,9 +480,17 @@ class RunAtlas(Operator):
         logger.info(f"Updating UVs for atlas on mesh: {mesh_obj.name}")
         
         mesh = mesh_obj.data
-        uv_layer = mesh.uv_layers.get("UVMap")
+        # uv_layer = mesh.uv_layers.get("UVMap")
+        # if not uv_layer:
+        #     logger.warning("No UVMap found on mesh")
+        #     return
+        # get the active UV layer
+        uv_layer = mesh.uv_layers.active
         if not uv_layer:
-            logger.warning("No UVMap found on mesh")
+            logger.warning("No active UV layer found on mesh")
+            return
+        if not uv_layer.active_render:
+            logger.warning("Active UV layer is not set for rendering")
             return
         
         for poly in mesh.polygons:
