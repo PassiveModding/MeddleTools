@@ -93,14 +93,14 @@ class RunBake(Operator):
                     raise Exception("Should not reach here, joining handled in duplicate_armature_and_meshes")
 
                 progress = 20 + int((current_material / total_materials) * 50)
-                # self.pack_uv_islands(meshes_using_material[0], "UVMap", "MeddlePackedUVs")
+                self.pack_uv_islands(meshes_using_material[0], "UVMap", "MeddlePackedUVs")
                 self.update_progress(context, progress, f"  Baking material {current_material}/{total_materials}: {original_name}...")
-                self.bake_material(context, material_copy, meshes_using_material[0], "UVMap")
+                self.bake_material(context, material_copy, meshes_using_material[0], "MeddlePackedUVs")
             
             self.update_progress(context, 70, "Joining all meshes...")
             # Join all meshes into one
             for mesh in mesh_copies:
-                self.set_active_uv_layer(mesh, "UVMap")
+                self.set_active_uv_layer(mesh, "MeddlePackedUVs")
             joined_mesh = self.join_all_meshes(context, mesh_copies, armature_copy)
             self.update_progress(context, 95, f"Bake complete! Created collection: {collection_name}")
             self.report({'INFO'}, f"Bake complete! Created collection: {collection_name}")
@@ -380,18 +380,16 @@ class RunBake(Operator):
             if max_width == 0 or max_height == 0:
                 max_width = 1024
                 max_height = 1024
-            return (max_width, max_height)
+            return (max_width * 2, max_height * 2)
         
         max_image_size = determineLargestImage()
         
         # bake passes
         image_nodes = []
         diffuse_image = self.bake_pass(context, material, joined_mesh, 'diffuse', max_image_size, uv_layer_name)
-        # alpha_image = self.bake_pass(context, material, joined_mesh, 'alpha', max_image_size)
         normal_image = self.bake_pass(context, material, joined_mesh, 'normal', max_image_size, uv_layer_name)
         roughness_image = self.bake_pass(context, material, joined_mesh, 'roughness', max_image_size, uv_layer_name)
         image_nodes.append(diffuse_image)
-        # image_nodes.append(alpha_image) # this is basically redundant since alpha is in diffuse
         image_nodes.append(normal_image)
         image_nodes.append(roughness_image)
 
