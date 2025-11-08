@@ -25,15 +25,6 @@ class MeddleBakePanel(bpy.types.Panel):
         box = layout.box()
         box.label(text="Baking", icon='RENDER_STILL')
         
-        # Warning message in a sub-box
-        if True:  # Always show warning
-            col = box.column(align=True)
-            col.alert = True
-            col.label(text="Warning: Decals may bake incorrectly", icon='ERROR')
-            col.label(text="due to face symmetry. Disable UV1")
-            col.label(text="related layers before baking.")
-            box.separator(factor=0.5)
-        
         # Project save warning
         if not bpy.data.is_saved:
             col = box.column(align=True)
@@ -41,6 +32,7 @@ class MeddleBakePanel(bpy.types.Panel):
             col.label(text="Save project before baking!", icon='ERROR')
             box.separator(factor=0.5)
         
+        box.prop(settings, "pack_uv_islands")
         box.prop(settings, "bake_samples")
         box.operator(RunBake.bl_idname, text=get_bake_label(context))
         

@@ -89,6 +89,7 @@ class RunBake(Operator):
             current_material = 0
             
             self.update_progress(context, 20, f"Baking {total_materials} material(s)...")
+            uv_layer_name = "UVMap"
             for original_name, material_copy in material_copies.items():
                 current_material += 1
                 # get mesh copies using this material
@@ -99,14 +100,21 @@ class RunBake(Operator):
                     raise Exception("Should not reach here, joining handled in duplicate_armature_and_meshes")
 
                 progress = 20 + int((current_material / total_materials) * 50)
-                self.pack_uv_islands(meshes_using_material[0], "UVMap", "MeddlePackedUVs")
+                
+                # Determine UV layer name based on pack_uv_islands setting
+                if context.scene.meddle_settings.pack_uv_islands:
+                    self.pack_uv_islands(meshes_using_material[0], "UVMap", "MeddlePackedUVs")
+                    uv_layer_name = "MeddlePackedUVs"
+                
                 self.update_progress(context, progress, f"  Baking material {current_material}/{total_materials}: {original_name}...")
-                self.bake_material(context, material_copy, meshes_using_material[0], "MeddlePackedUVs")
+                self.bake_material(context, material_copy, meshes_using_material[0], uv_layer_name)
             
             self.update_progress(context, 70, "Joining all meshes...")
+            
             # Join all meshes into one
             for mesh in mesh_copies:
-                self.set_active_uv_layer(mesh, "MeddlePackedUVs")
+                self.set_active_uv_layer(mesh, uv_layer_name)
+
             joined_mesh = self.join_all_meshes(context, mesh_copies, armature_copy)
             self.update_progress(context, 95, f"Bake complete! Created collection: {collection_name}")
             self.report({'INFO'}, f"Bake complete! Created collection: {collection_name}")
