@@ -10,13 +10,18 @@ logger.addHandler(logging.NullHandler())
 def get_atlas_label(context):
     """Generate label for atlas operation based on selected meshes"""
     meshes = bake_utils.get_all_selected_meshes(context)
-    mesh_count = len(meshes)
-    if mesh_count == 0:
-        return "Create Atlas from Selection (no meshes selected)"
-    elif mesh_count == 1:
-        return f"Create Atlas from Selection (1 mesh)"
+    distinct_materials = set()
+    for mesh in meshes:
+        for mat in mesh.data.materials:
+            if mat:
+                distinct_materials.add(mat.name)
+    num_materials = len(distinct_materials)
+    if num_materials == 0:
+        return "Create Texture Atlas (No materials found)"
+    elif num_materials == 1:
+        return "Create Texture Atlas (1 material)"
     else:
-        return f"Create Atlas from Selection ({mesh_count} meshes)"
+        return f"Create Texture Atlas ({num_materials} materials)"
 
 def img_as_nparray(image):
     """Convert Blender image to numpy array (H, W, 4)"""
