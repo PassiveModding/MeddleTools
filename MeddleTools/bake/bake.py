@@ -18,13 +18,19 @@ except Exception:
 def get_bake_label(context):
     """Get dynamic label for RunBake operator based on selection"""
     meshes = bake_utils.get_all_selected_meshes(context)
-    mesh_count = len(meshes)
-    if mesh_count == 0:
-        return "Run Bake (no meshes selected)"
-    elif mesh_count == 1:
-        return "Run Bake (1 mesh)"
+    distinct_materials = set()
+    for mesh in meshes:
+        for mat in mesh.data.materials:
+            if mat:
+                distinct_materials.add(mat.name)
+                
+    material_count = len(distinct_materials)
+    if material_count == 0:
+        return "Run Bake (No materials found)"
+    elif material_count == 1:
+        return f"Run Bake (1 material)"
     else:
-        return f"Run Bake ({mesh_count} meshes)"
+        return f"Run Bake ({material_count} materials)"
 
 class RunBake(Operator):
     """Run the baking process for selected objects"""
