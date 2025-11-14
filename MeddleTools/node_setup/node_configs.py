@@ -4,7 +4,9 @@ import idprop.types
 import os.path as path
 import re
 import logging
+import time
 from typing import Callable, List, Tuple, Union, Any
+from functools import wraps
 from .. import version, blend_import
 from .node_mappings import (
     TextureNodeConfig,
@@ -27,6 +29,20 @@ try:
     logger.addHandler(logging.NullHandler())
 except Exception:
     pass
+
+# Profiling decorator
+def profile_function(func):
+    """Decorator to profile function execution time"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        if elapsed > 0.001:  # Only log if > 1ms
+            logger.info(f"[PROFILE] {func.__name__} took {elapsed:.4f}s")
+        return result
+    return wrapper
 
 png_custom_vertical_array_definitions = {
     'chara_tile_norm_array': ArrayDefinition('array_textures/chara/common/texture/tile_norm_array', r'tile_norm_array\..+\.vertical\.png$'),
@@ -398,6 +414,7 @@ ramp_lookups = {
 }
 
 
+@profile_function
 def copy_custom_properties(material: bpy.types.Material):
     custom_props = {}
     for key in material.keys():
@@ -408,6 +425,7 @@ def copy_custom_properties(material: bpy.types.Material):
                 logger.exception("Could not read custom property '%s' from '%s': %s", key, material.name, e)
     return custom_props
 
+@profile_function
 def apply_custom_properties(material: bpy.types.Material, custom_props: dict):
     for key, value in custom_props.items():
         try:
@@ -420,16 +438,16 @@ def apply_custom_properties(material: bpy.types.Material, custom_props: dict):
             logger.warning("Could not apply custom property '%s' to '%s': %s", key, material.name, e)
 
 
-def apply_material(slot: bpy.types.MaterialSlot):
-    if slot.material is None:
-        return False
+@profile_function
+def apply_material(material: bpy.types.Material, slots: List[bpy.types.MaterialSlot]) -> Union[bpy.types.Material, None]:
+    if material is None:
+        return None
     try:            
-        source_material = slot.material
-
+        source_material = material
         shader_package = source_material.get("ShaderPackage")
         if not shader_package:
             logger.debug("Material does not have a shader package defined.")
-            return False
+            return None
         
         resource_shpk = shader_package_mappings.get(shader_package, shader_package)
         
@@ -438,7 +456,7 @@ def apply_material(slot: bpy.types.MaterialSlot):
         template_material = bpy.data.materials.get(resource_name)
         if not template_material:
             logger.debug("Resource material %s not found.", resource_name)
-            return False
+            return None
         
         new_name = source_material.name
         if not new_name.startswith('Meddle '):
@@ -449,70 +467,81 @@ def apply_material(slot: bpy.types.MaterialSlot):
             new_name = f'Meddle {version.current_version} {shader_package} {new_name}'
         else:
             logger.debug("Material %s already has Meddle prefix, skipping.", new_name)
-            return False  # do not apply if already meddle material
+            return None  # do not apply if already meddle material
         template_copy = template_material.copy()
         template_copy.name = new_name
         #template_copy.use_transparent_shadows = True
         apply_custom_properties(template_copy, copy_custom_properties(source_material))
 
-        slot.material = template_copy
-        # make sure all other slots using source_material are updated
-        for obj in (o for o in bpy.data.objects if o.type == 'MESH'):
-            for slot in obj.material_slots:
-                if slot.material == source_material:
-                    slot.material = template_copy
+        for slot in slots:
+            if slot.material == source_material:
+                slot.material = template_copy
 
-        return True
+        return template_copy
     except Exception as e:
         logger.exception("Error applying material: %s", e)
-        return False
+        return None
     
 
-def map_mesh(mesh: bpy.types.Mesh, cache_directory: str):
-    for slot in mesh.material_slots:
-        if slot.material is None:
-            continue
-       
-       
-        if not apply_material(slot):
-            continue
-        
-        logger.info("Applying material %s to mesh %s", slot.material.name, mesh.name)
-        setBackfaceCulling(mesh, slot.material)        
-        setPngConfig(slot.material, cache_directory)
-        setUvMapConfig(mesh, slot.material)
-        setGroupProperties(mesh, slot.material)
-        setColorAttributes(mesh, slot.material)
-        setColorTableRamps(mesh, slot.material)
+@profile_function
+def map_mesh(material: bpy.types.Material, slots: List[bpy.types.MaterialSlot], cache_directory: str):    
+    material = apply_material(material, slots)
+    if not material:
+        return
     
-def setColorTableRamps(mesh: bpy.types.Mesh, material: bpy.types.Material):
+    logger.info("Applying material %ss", material.name)
+    
+    step_start = time.perf_counter()
+    setBackfaceCulling(material)
+    logger.info(f"[PROFILE]   setBackfaceCulling took {time.perf_counter() - step_start:.4f}s")
+    
+    step_start = time.perf_counter()
+    setPngConfig(material, cache_directory)
+    logger.info(f"[PROFILE]   setPngConfig took {time.perf_counter() - step_start:.4f}s")
+    
+    step_start = time.perf_counter()
+    setUvMapConfig(material)
+    logger.info(f"[PROFILE]   setUvMapConfig took {time.perf_counter() - step_start:.4f}s")
+    
+    step_start = time.perf_counter()
+    setGroupProperties(material)
+    logger.info(f"[PROFILE]   setGroupProperties took {time.perf_counter() - step_start:.4f}s")
+    
+    step_start = time.perf_counter()
+    setColorAttributes(material)
+    logger.info(f"[PROFILE]   setColorAttributes took {time.perf_counter() - step_start:.4f}s")
+    
+    step_start = time.perf_counter()
+    setColorTableRamps(material)
+    logger.info(f"[PROFILE]   setColorTableRamps took {time.perf_counter() - step_start:.4f}s")
+    
+@profile_function
+def setColorTableRamps(material: bpy.types.Material):
+    from .node_mappings import getOddEvenRows
+    
     ramp_nodes = [node for node in material.node_tree.nodes if node.type == 'VALTORGB']
+    if not ramp_nodes:
+        return
+    
+    # Fetch rows once for all ramps
+    odds_rows, evens_rows = getOddEvenRows(material)
     
     for node in ramp_nodes:
         label = node.label
         if label in ramp_lookups:
-            ramp_lookups[label].apply(material, node)
+            ramp_lookups[label].apply(material, node, odds_rows, evens_rows)
 
-def setColorAttributes(mesh: bpy.types.Mesh, material: bpy.types.Material):
+@profile_function
+def setColorAttributes(material: bpy.types.Material):
     vertex_color_nodes = [node for node in material.node_tree.nodes if node.type == 'VERTEX_COLOR']
     #node_tree = material.node_tree
     for node in vertex_color_nodes:
         # if has label, lookup color attribute and set
         label = node.label
-        if label not in mesh.data.vertex_colors:
-            # find connections from node and disconnect
-            # skip for now, should ideally be driven by material keys
-            # for link in node.outputs[0].links:
-            #     node_tree.links.remove(link)
-            # for link in node.outputs[1].links:
-            #     node_tree.links.remove(link)
-            continue
         node.layer_name = label
 
-def setBackfaceCulling(mesh: bpy.types.Mesh, material: bpy.types.Material):
-    if not mesh.data:
-        return
-
+@profile_function
+def setBackfaceCulling(material: bpy.types.Material):
     if 'RenderBackfaces' not in material:
         return
     
@@ -522,6 +551,7 @@ def setBackfaceCulling(mesh: bpy.types.Mesh, material: bpy.types.Material):
     else:
         material.use_backface_culling = True
 
+@profile_function
 def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
     texture_nodes = [node for node in node_tree.nodes if node.type == 'TEX_IMAGE']
@@ -592,22 +622,17 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
         node.interpolation = config.interpolation
         node.extension = config.extension
 
-def setUvMapConfig(mesh: bpy.types.Mesh, material: bpy.types.Material):
-    if not mesh.data:
-        return
-    
+@profile_function
+def setUvMapConfig(material: bpy.types.Material):
     node_tree = material.node_tree
     uv_map_nodes = [node for node in node_tree.nodes if node.type == 'UVMAP']
 
     for node in uv_map_nodes:
         label = node.label
-        if label not in mesh.data.uv_layers:
-            logger.debug("UV Map %s not found in mesh %s.", label, mesh.name)
-            continue
-
         node.uv_map = label
         
-def setGroupProperties(mesh: bpy.types.Mesh, material: bpy.types.Material):
+@profile_function
+def setGroupProperties(material: bpy.types.Material):
     node_tree = material.node_tree
     group_nodes = [node for node in node_tree.nodes if node.type == 'GROUP']
 
