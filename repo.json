@@ -14,7 +14,6 @@
                 "SPDX:GPL-3.0-or-later"
             ],
             "blender_version_min": "4.5.0",
-            "blender_version_max": "4.6.0",
             "website": "https://github.com/PassiveModding/MeddleTools",
             "permissions": {
                 "files": "Import files from meddle cache directory"

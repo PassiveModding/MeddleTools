@@ -238,27 +238,55 @@ class ModelImport(bpy.types.Operator):
         
         # Process imported meshes
         imported_meshes = [obj for obj in newly_imported if obj.type == 'MESH']
-        mesh_count = len(imported_meshes)
         
         # Calculate granular progress increment for each mesh
         # Progress goes from chunk_mid to chunk_end over all meshes
-        for mesh_index, mesh in enumerate(imported_meshes):
+        
+        material_slot_map = {}
+        for mesh in imported_meshes:
             if mesh is None:
                 continue
             
+            for slot in mesh.material_slots:
+                if slot.material is not None:
+                    if slot.material not in material_slot_map:
+                        material_slot_map[slot.material] = []
+                    material_slot_map[slot.material].append(slot)
+                    
+        material_count = len(material_slot_map)
+                    
+        for material, slots in material_slot_map.items():
             try:
-                node_configs.map_mesh(mesh, cache_dir)
+                node_configs.map_mesh(material, slots, cache_dir)
                 
                 # Update progress granularly between chunk_mid and chunk_end
-                if progress_started and wm and mesh_count > 0:
-                    progress_fraction = (mesh_index + 1) / mesh_count
+                if progress_started and wm and material_count > 0:
+                    progress_fraction = (list(material_slot_map.keys()).index(material) + 1) / material_count
                     current_progress = chunk_mid + (chunk_end - chunk_mid) * progress_fraction
                     try:
                         wm.progress_update(current_progress)
                     except Exception:
                         pass
             except Exception as e:
-                print(f"Error mapping mesh {mesh.name}: {e}")
+                print(f"Error mapping material {material.name}: {e}")
+        
+        # for mesh_index, mesh in enumerate(imported_meshes):
+        #     if mesh is None:
+        #         continue
+            
+        #     try:
+        #         node_configs.map_mesh(mesh, cache_dir)
+                
+        #         # Update progress granularly between chunk_mid and chunk_end
+        #         if progress_started and wm and mesh_count > 0:
+        #             progress_fraction = (mesh_index + 1) / mesh_count
+        #             current_progress = chunk_mid + (chunk_end - chunk_mid) * progress_fraction
+        #             try:
+        #                 wm.progress_update(current_progress)
+        #             except Exception:
+        #                 pass
+        #     except Exception as e:
+        #         print(f"Error mapping mesh {mesh.name}: {e}")
         
         # Process imported lights
         imported_lights = [obj for obj in newly_imported if obj.name.startswith("Light")]
@@ -278,7 +306,7 @@ class ModelImport(bpy.types.Operator):
             except Exception as e:
                 print(f"Error setting collection for {obj.name}: {e}")
         
-        return mesh_count
+        return len(imported_meshes)
             
 class ApplyToSelected(bpy.types.Operator):
     bl_idname = "meddle.apply_to_selected"
@@ -299,21 +327,37 @@ class ApplyToSelected(bpy.types.Operator):
         
         selected_objects = context.selected_objects
         
-        all_materials_unique = set()
-        for obj in selected_objects:
-            if obj.type == 'MESH':
-                for mat_slot in obj.material_slots:
-                    if mat_slot.material is not None:
-                        all_materials_unique.add(mat_slot.material)
+        # all_materials_unique = set()
+        # for obj in selected_objects:
+        #     if obj.type == 'MESH':
+        #         for mat_slot in obj.material_slots:
+        #             if mat_slot.material is not None:
+        #                 all_materials_unique.add(mat_slot.material)
                         
-        for mat in all_materials_unique:
-            # change name to remove Meddle prefix if it exists
-            if mat.name.startswith("Meddle "):
-                mat.name = mat.name[len("Meddle "):]
+        # for mat in all_materials_unique:
+        #     # change name to remove Meddle prefix if it exists
+        #     if mat.name.startswith("Meddle "):
+        #         mat.name = mat.name[len("Meddle "):]
 
+        # for obj in selected_objects:
+        #     if obj.type == 'MESH':
+        #         node_configs.map_mesh(obj, self.directory)
+        material_slot_map = {}
         for obj in selected_objects:
             if obj.type == 'MESH':
-                node_configs.map_mesh(obj, self.directory)
+                for slot in obj.material_slots:
+                    if slot.material is not None:
+                        if slot.material not in material_slot_map:
+                            material_slot_map[slot.material] = []
+                        material_slot_map[slot.material].append(slot)
+                        
+        for material, slots in material_slot_map.items():
+            try:
+                if material.name.startswith("Meddle "):
+                    material.name = material.name[len("Meddle "):]
+                node_configs.map_mesh(material, slots, self.directory)
+            except Exception as e:
+                print(f"Error mapping material {material.name}: {e}")
                 
         return {'FINISHED'}
 

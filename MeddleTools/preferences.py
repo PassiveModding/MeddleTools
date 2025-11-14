@@ -58,6 +58,12 @@ class MeddleSettings(bpy.types.PropertyGroup):
         default=True
     )
     
+    pack_uv_islands: bpy.props.BoolProperty(
+        name="Pack UV Islands",
+        description="Run the Pack Islands operations to create a new UV layer for baked textures, fixes overlapping UVs",
+        default=True
+    )
+    
 def register():
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)

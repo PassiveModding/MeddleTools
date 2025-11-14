@@ -285,12 +285,15 @@ class ColorTableRampLookup:
         self.b_ramp = b_ramp
         
         
-    def apply(self, material: bpy.types.Material, colorRamp):        
+    def apply(self, material: bpy.types.Material, colorRamp, odds_rows=None, evens_rows=None):
         clearRamp(colorRamp)
-        odds, evens = getOddEvenRows(material)
+        if odds_rows is None or evens_rows is None:
+            odds, evens = getOddEvenRows(material)
+        else:
+            odds, evens = odds_rows, evens_rows
 
         set = odds if self.b_ramp else evens
-
+        
         for i, row in enumerate(set):
             if self.rowPropName not in row:
                 continue
@@ -313,10 +316,13 @@ class PackedColorTableRampLookup:
         self.rowNameTypeMaps = rowNameTypeMaps
         self.b_ramp = b_ramp
         
-    def apply(self, material: bpy.types.Material, colorRamp):
+    def apply(self, material: bpy.types.Material, colorRamp, odds_rows=None, evens_rows=None):
         clearRamp(colorRamp)
 
-        odds, evens = getOddEvenRows(material)
+        if odds_rows is None or evens_rows is None:
+            odds, evens = getOddEvenRows(material)
+        else:
+            odds, evens = odds_rows, evens_rows
         set = odds if self.b_ramp else evens
 
         for i, row in enumerate(set):
