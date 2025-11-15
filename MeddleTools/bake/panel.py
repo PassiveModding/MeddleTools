@@ -4,6 +4,9 @@ from .atlas import RunAtlas, get_atlas_label
 from .export_fbx import ExportFBX
 from .reproject_retile import ReprojectRetile, get_reproject_retile_label
 from .reproject_rebake import ReprojectRebake
+from .create_copy_for_baking import CreateCopyForBaking
+from .create_uv_bake_layers import CreateUVBakeLayers
+from .join_meshes import JoinMeshes, get_join_label
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
@@ -17,9 +20,9 @@ class MeddleBakePanel(bpy.types.Panel):
         settings = context.scene.meddle_settings
         
         # UV Reproject and Retile Section
-        box = layout.box()
-        box.label(text="UV Operations", icon='UV')
-        box.operator(ReprojectRetile.bl_idname, text=get_reproject_retile_label(context))
+        # box = layout.box()
+        # box.label(text="UV Operations", icon='UV')
+        # box.operator(ReprojectRetile.bl_idname, text=get_reproject_retile_label(context))
         
         # Baking Section
         box = layout.box()
@@ -34,7 +37,10 @@ class MeddleBakePanel(bpy.types.Panel):
         
         box.prop(settings, "pack_uv_islands")
         box.prop(settings, "bake_samples")
+        box.operator(CreateCopyForBaking.bl_idname, text="Create Copy for Baking")
+        box.operator(CreateUVBakeLayers.bl_idname, text="Create UV Bake Layers")
         box.operator(RunBake.bl_idname, text=get_bake_label(context))
+        box.operator(JoinMeshes.bl_idname, text=get_join_label(context))
         
         # Texture Atlas Section
         box = layout.box()

@@ -234,7 +234,39 @@ def get_bake_pass_config(pass_name):
             'required_inputs': ['Roughness', 'Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
+        },
+        'ior': {
+            'bake_type': 'EMIT',
+            'background_color': (0.0, 0.0, 0.0, 1.0),  # Represents IOR of 1.0 after remapping
+            'pass_filter': {'EMIT'},
+            'required_inputs': ['IOR'],
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color',
+            'remap_to_emission': True  # Flag to remap IOR to Emission for baking
         }
     }
     
     return configs.get(pass_name.lower(), None)
+
+def set_active_uv_layer(mesh, uv_layer_name):
+    """Set the active UV layer on the mesh
+    
+    Args:
+        mesh: The mesh object to set the UV layer on
+        uv_layer_name: The name of the UV layer to set as active
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if uv_layer_name in mesh.data.uv_layers:
+        uv_layer = mesh.data.uv_layers[uv_layer_name]
+        mesh.data.uv_layers.active = uv_layer
+        uv_layer.active_render = True
+        logger.info(f"Set active UV layer to {uv_layer_name} on mesh {mesh.name}")
+        return True
+    else:
+        logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")
+        return False
