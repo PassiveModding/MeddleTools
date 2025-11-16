@@ -8,13 +8,13 @@ logger = logging.getLogger(__name__)
 
 def get_join_label(context):
     """Get dynamic label for JoinMeshes operator based on selection"""
-    selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']
-    mesh_count = len(selected_meshes)
+    mesh_objects = bake_utils.get_all_selected_meshes(context)
+    mesh_count = len(mesh_objects)
     
     if mesh_count == 0:
         return "Join Meshes (No meshes selected)"
     elif mesh_count == 1:
-        return "Join Meshes (1 mesh - nothing to join)"
+        return "Join Meshes (1 mesh)"
     else:
         return f"Join Meshes ({mesh_count} meshes)"
 
@@ -28,15 +28,12 @@ class JoinMeshes(Operator):
     @classmethod
     def poll(cls, context):
         # Require at least 2 mesh objects selected
-        selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']
-        return len(selected_meshes) >= 2
+        mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
+        selected_meshes = bake_utils.get_all_selected_meshes(context)
+        return mesh_or_armature_selected and len(selected_meshes) >= 2
     
     def execute(self, context):
-        selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']
-        
-        if len(selected_meshes) < 2:
-            self.report({'ERROR'}, "Select at least 2 mesh objects to join")
-            return {'CANCELLED'}
+        selected_meshes = bake_utils.get_all_selected_meshes(context)
         
         logger.info(f"Joining {len(selected_meshes)} meshes into one")
         self.report({'INFO'}, f"Joining {len(selected_meshes)} mesh(es) into one...")

@@ -181,69 +181,66 @@ class RunBake(Operator):
         # remove material_output_node from list
         original_nodes.remove(material_output_node)
         
+        # Get bake material configuration
+        bake_config = bake_utils.get_bake_material_config()
+        
         def createBakeBsdfNode():
             # duplicate the principled node for baking
             bake_node = material.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
             bake_node.location = (material_output_node.location.x - 300, material_output_node.location.y)
             bake_node.label = f"Bake_{material.name}"
-            # fix defaults            
-            bake_node.inputs['IOR'].default_value = 1
-            bake_node.inputs['Metallic'].default_value = 0.0
-            bake_node.inputs['Roughness'].default_value = 0.5
-            bake_node.inputs['Base Color'].default_value = (1.0, 1.0, 1.0, 1.0)
+            
+            # Apply default values from config
+            for input_name, value in bake_config['bsdf_defaults'].items():
+                if input_name in bake_node.inputs:
+                    bake_node.inputs[input_name].default_value = value
 
             return bake_node
         
-        def determineLargestImage():
-            max_width = 0
-            max_height = 0
-            for node in material.node_tree.nodes:
-                # skip _array images
-                if node.type == 'TEX_IMAGE' and node.image and "_array" not in node.image.name:
-                    max_width = max(max_width, node.image.size[0])
-                    max_height = max(max_height, node.image.size[1])
-            if max_width == 0 or max_height == 0:
-                max_width = 1024
-                max_height = 1024
-            return (max_width * 2, max_height * 2)
-        
-        max_image_size = determineLargestImage()
-        
-        # bake passes
-        image_nodes = []
-        diffuse_image = self.bake_pass(context, material, joined_mesh, 'diffuse', max_image_size, uv_layer_name)
-        normal_image = self.bake_pass(context, material, joined_mesh, 'normal', max_image_size, uv_layer_name)
-        roughness_image = self.bake_pass(context, material, joined_mesh, 'roughness', max_image_size, uv_layer_name)
-        # ior_image = self.bake_pass(context, material, joined_mesh, 'ior', max_image_size, uv_layer_name)
-        image_nodes.append(diffuse_image)
-        image_nodes.append(normal_image)
-        image_nodes.append(roughness_image)
-        # image_nodes.append(ior_image)
+        # Get image size from material settings
+        settings = bake_utils.get_mat_settings_by_name(context.scene.meddle_settings, material.name)
+        max_image_size = (settings.image_width, settings.image_height) if settings else bake_utils.determine_largest_image_size(material)
 
-        # trigger save of baked images
-        for img_node in image_nodes:
-            if img_node.image and img_node.image.has_data:
-                img_node.image.save()
+        # Bake passes from config
+        baked_images = {}
+        for pass_name in bake_config['bake_passes']:
+            image_node = self.bake_pass(context, material, joined_mesh, pass_name, max_image_size, uv_layer_name)
+            baked_images[pass_name] = image_node
+            
+            # Trigger save of baked image
+            if image_node.image and image_node.image.has_data:
+                image_node.image.save()
 
+        # Create baked BSDF node
         duplicate_node = createBakeBsdfNode()
         
-        # link image node to duplicate_node
-        material.node_tree.links.new(diffuse_image.outputs['Color'], duplicate_node.inputs['Base Color'])
-        material.node_tree.links.new(diffuse_image.outputs['Alpha'], duplicate_node.inputs['Alpha'])
-        material.node_tree.links.new(roughness_image.outputs['Color'], duplicate_node.inputs['Roughness'])
-        # material.node_tree.links.new(ior_image.outputs['Color'], duplicate_node.inputs['IOR'])
+        # Create special nodes (like normal map)
+        special_nodes = {'bsdf': duplicate_node, 'output': material_output_node}
+        for node_key, node_config in bake_config['special_nodes'].items():
+            node = material.node_tree.nodes.new(node_config['type'])
+            location_offset = node_config['location_offset']
+            node.location = (duplicate_node.location.x + location_offset[0], 
+                           duplicate_node.location.y + location_offset[1])
+            special_nodes[node_key] = node
         
-        # run normal through normal map node
-        normal_map_node = material.node_tree.nodes.new('ShaderNodeNormalMap')
-        normal_map_node.location = (duplicate_node.location.x - 300, duplicate_node.location.y - 200)
-        material.node_tree.links.new(normal_image.outputs['Color'], normal_map_node.inputs['Color'])
-        material.node_tree.links.new(normal_map_node.outputs['Normal'], duplicate_node.inputs['Normal'])
-
-        # link duplicate_node output to material output
-        material.node_tree.links.new(duplicate_node.outputs['BSDF'], material_output_node.inputs['Surface'])
+        # Connect nodes according to config
+        for from_key, from_output, to_key, to_input in bake_config['node_connections']:
+            if from_key in baked_images:
+                from_node = baked_images[from_key]
+            elif from_key in special_nodes:
+                from_node = special_nodes[from_key]
+            else:
+                continue
+                
+            if to_key in special_nodes:
+                to_node = special_nodes[to_key]
+            else:
+                continue
+                
+            material.node_tree.links.new(from_node.outputs[from_output], to_node.inputs[to_input])
         
-        # set image node locations
-        for i, img_node in enumerate(image_nodes):
+        # Set image node locations
+        for i, (pass_name, img_node) in enumerate(baked_images.items()):
             img_node.location = (duplicate_node.location.x - 600, duplicate_node.location.y - i * 200)
         
         for node in original_nodes:
@@ -264,6 +261,10 @@ class RunBake(Operator):
         alpha_mode = pass_config['alpha_mode']
         colorspace = pass_config['colorspace']
         
+        # validate to clear linting errors
+        # Ensure required_inputs is str[]
+        assert isinstance(required_inputs, list)
+        
         clear = True
         selected_to_active = False
         normal_space = "TANGENT"
@@ -272,7 +273,7 @@ class RunBake(Operator):
         
         # Check if this pass requires remapping to Emission
         if pass_config.get('remap_to_emission', False):
-            remap_target_socket_name = 'Emission'
+            remap_target_socket_name = 'Emission Strength'
             logger.info(f"Will remap {bake_name} to Emission for baking")
         
         logger.info(f"Bake margin set to: {bake_margin} pixels")

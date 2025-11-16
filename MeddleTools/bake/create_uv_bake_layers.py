@@ -10,6 +10,18 @@ try:
 except Exception:
     pass
 
+def get_create_uv_label(context):
+    """Get dynamic label for CreateUVBakeLayers operator based on selection"""
+    mesh_objects = bake_utils.get_all_selected_meshes(context)
+    mesh_count = len(mesh_objects)
+    
+    if mesh_count == 0:
+        return "Create UV Bake Layers (No meshes selected)"
+    elif mesh_count == 1:
+        return "Create UV Bake Layers (1 mesh)"
+    else:
+        return f"Create UV Bake Layers ({mesh_count} meshes)"
+
 
 class CreateUVBakeLayers(Operator):
     """Create packed UV layers for baking on selected meshes"""
@@ -20,7 +32,12 @@ class CreateUVBakeLayers(Operator):
     
     @classmethod
     def poll(cls, context):
-        return bake_utils.require_mesh_or_armature_selected(context)
+        # Ensure we have a mesh or armature selected
+        mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
+        # Check if at least one selected mesh lacks the packed UV layer
+        mesh_objects = bake_utils.get_all_selected_meshes(context)
+        lacks_packed_uv = any("MeddlePackedUVs" not in mesh.data.uv_layers for mesh in mesh_objects)
+        return mesh_or_armature_selected and lacks_packed_uv
     
     def execute(self, context):
         try:

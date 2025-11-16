@@ -1,5 +1,29 @@
 import bpy
 
+class MaterialBakeSettings(bpy.types.PropertyGroup):
+    """Settings for individual material baking"""
+    material_name: bpy.props.StringProperty(
+        name="Material Name",
+        description="Name of the material",
+        default=""
+    )
+    
+    image_width: bpy.props.IntProperty(
+        name="Width",
+        description="Width of the baked texture",
+        default=2048,
+        min=64,
+        max=8192
+    )
+    
+    image_height: bpy.props.IntProperty(
+        name="Height",
+        description="Height of the baked texture",
+        default=2048,
+        min=64,
+        max=8192
+    )
+
 class MeddleSettings(bpy.types.PropertyGroup):
     # gltf_bone_dir: bpy.props.EnumProperty(
     #     items=[
@@ -52,22 +76,24 @@ class MeddleSettings(bpy.types.PropertyGroup):
         max=4096
     )
     
-    pack_alpha: bpy.props.BoolProperty(
-        name="Pack Alpha",
-        description="Pack alpha channel into diffuse texture's alpha channel instead of creating a separate alpha texture",
-        default=True
+    material_bake_settings: bpy.props.CollectionProperty(
+        type=MaterialBakeSettings,
+        name="Material Bake Settings",
+        description="Per-material bake settings"
     )
     
-    pack_uv_islands: bpy.props.BoolProperty(
-        name="Pack UV Islands",
-        description="Run the Pack Islands operations to create a new UV layer for baked textures, fixes overlapping UVs",
-        default=True
+    active_material_index: bpy.props.IntProperty(
+        name="Active Material Index",
+        description="Currently selected material in the list",
+        default=0
     )
     
 def register():
+    bpy.utils.register_class(MaterialBakeSettings)
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)
     
 def unregister():
     bpy.utils.unregister_class(MeddleSettings)
+    bpy.utils.unregister_class(MaterialBakeSettings)
     del bpy.types.Scene.meddle_settings

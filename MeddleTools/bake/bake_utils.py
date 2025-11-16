@@ -2,6 +2,39 @@ import bpy
 import math
 import os
 
+def is_in_bake_collection(obj):
+    """Check if the object is in a bake collection (name starts with 'BAKE_')"""
+    for collection in obj.users_collection:
+        if collection.name.startswith("BAKE_"):
+            return True
+    return False
+
+def get_mat_settings_by_name(settings, material_name):
+    """Get material bake settings by material name"""
+    for mat_setting in settings.material_bake_settings:
+        if mat_setting.material_name == material_name:
+            return mat_setting
+    return None
+
+def determine_largest_image_size(material):
+    """Determine the largest image size used in a material's texture nodes"""
+    if not material or not material.use_nodes:
+        return (2048, 2048)
+    
+    max_width = 0
+    max_height = 0
+    for node in material.node_tree.nodes:
+        # skip _array images
+        if node.type == 'TEX_IMAGE' and node.image and "_array" not in node.image.name:
+            max_width = max(max_width, node.image.size[0])
+            max_height = max(max_height, node.image.size[1])
+    
+    if max_width == 0 or max_height == 0:
+        max_width = 1024
+        max_height = 1024
+    
+    return (max_width, max_height)
+
 def require_mesh_or_armature_selected(context):
     """Check if operation can be executed"""
     # Require at least one mesh or armature selected
@@ -205,7 +238,7 @@ def get_bake_pass_config(pass_name):
     """Get baking configuration for a specific pass
     
     Args:
-        pass_name: Name of the pass ('diffuse', 'normal', 'roughness')
+        pass_name: Name of the pass ('diffuse', 'normal', 'roughness', 'metalness')
     
     Returns:
         Dictionary with bake_type, background_color, pass_filter, required_inputs, alpha_mode, colorspace
@@ -235,18 +268,118 @@ def get_bake_pass_config(pass_name):
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
         },
-        'ior': {
+        'metalness': {
             'bake_type': 'EMIT',
-            'background_color': (0.0, 0.0, 0.0, 1.0),  # Represents IOR of 1.0 after remapping
-            'pass_filter': {'EMIT'},
-            'required_inputs': ['IOR'],
+            'background_color': (0.0, 0.0, 0.0, 1.0),
+            'pass_filter': set(),
+            'required_inputs': ['Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color',
-            'remap_to_emission': True  # Flag to remap IOR to Emission for baking
+            'remap_to_emission': True
         }
     }
     
     return configs.get(pass_name.lower(), None)
+
+def get_bake_material_config() -> dict:
+    """Get configuration for baking materials
+    
+    Returns:
+        Dictionary with bake passes and material setup configuration
+    """
+    return {
+        # Bake passes to execute in order
+        'bake_passes': ['diffuse', 'normal', 'roughness', 'metalness'],
+        
+        # Material node connections after baking
+        # Format: (from_node_key, from_output, to_node_key, to_input)
+        'node_connections': [
+            ('diffuse', 'Color', 'bsdf', 'Base Color'),
+            ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
+            ('roughness', 'Color', 'bsdf', 'Roughness'),
+            ('metalness', 'Color', 'bsdf', 'Metallic'),
+            ('normal', 'Color', 'normal_map', 'Color'),
+            ('normal_map', 'Normal', 'bsdf', 'Normal'),
+            ('bsdf', 'BSDF', 'output', 'Surface'),
+        ],
+        
+        # Special nodes needed for baked material
+        'special_nodes': {
+            'normal_map': {
+                'type': 'ShaderNodeNormalMap',
+                'location_offset': (-300, -200)  # Relative to bsdf node
+            }
+        },
+        
+        # BSDF node default inputs
+        'bsdf_defaults': {
+            'IOR': 1.2,
+            'Metallic': 0.0,
+            'Roughness': 0.5,
+            'Base Color': (1.0, 1.0, 1.0, 1.0),
+            'Emission Color': (1.0, 1.0, 1.0, 1.0),
+            'Emission Strength': 0.0
+        }
+    }
+
+def get_atlas_config() -> dict:
+    """Get configuration for atlas creation
+    
+    Returns:
+        Dictionary with texture_types, socket_mapping, material setup and other atlas settings
+    """
+    return {
+        'texture_types': ['diffuse', 'normal', 'roughness', 'metalness'],
+        'pack_alpha': True,  # Whether to pack alpha channel into diffuse texture
+        
+        # Socket mapping for finding textures by connection
+        'socket_mapping': {
+            'diffuse': 'Base Color',
+            'roughness': 'Roughness',
+            'metalness': 'Metallic',
+            'alpha': 'Alpha'
+        },
+        
+        # Texture node configurations for atlas material setup
+        'texture_node_configs': [
+            ('diffuse', (-400, 300), 'Atlas Diffuse'),
+            ('normal', (-400, 0), 'Atlas Normal'),
+            ('roughness', (-400, -300), 'Atlas Roughness'),
+            ('metalness', (-400, -600), 'Atlas Metalness')
+        ],
+        
+        # Node connections for atlas material
+        # Format: (from_node_key, from_output, to_node_key, to_input)
+        'node_connections': [
+            ('diffuse', 'Color', 'bsdf', 'Base Color'),
+            ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
+            ('roughness', 'Color', 'bsdf', 'Roughness'),
+            ('metalness', 'Color', 'bsdf', 'Metallic'),
+            ('normal', 'Color', 'normal_map', 'Color'),
+            ('normal_map', 'Normal', 'bsdf', 'Normal'),
+            ('bsdf', 'BSDF', 'output', 'Surface'),
+        ],
+        
+        # Special node setup
+        'special_nodes': {
+            'normal_map': {
+                'type': 'ShaderNodeNormalMap',
+                'location': (-100, -100)
+            },
+            'bsdf': {
+                'type': 'ShaderNodeBsdfPrincipled',
+                'location': (0, 0),
+                'inputs': {
+                    'IOR': 1.0,
+                    'Metallic': 0.0
+                }
+            },
+            'output': {
+                'type': 'ShaderNodeOutputMaterial',
+                'location': (400, 0)
+            }
+        }
+    }
 
 def set_active_uv_layer(mesh, uv_layer_name):
     """Set the active UV layer on the mesh

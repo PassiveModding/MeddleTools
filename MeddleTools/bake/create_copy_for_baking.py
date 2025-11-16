@@ -10,6 +10,18 @@ try:
 except Exception:
     pass
 
+def get_create_copy_label(context):
+    """Get dynamic label for CreateCopyForBaking operator based on selection"""
+    mesh_objects = bake_utils.get_all_selected_meshes(context)
+    mesh_count = len(mesh_objects)
+    
+    if mesh_count == 0:
+        return "Create Copy for Baking (No meshes selected)"
+    elif mesh_count == 1:
+        return "Create Copy for Baking (1 mesh)"
+    else:
+        return f"Create Copy for Baking ({mesh_count} meshes)"
+
 
 class CreateCopyForBaking(Operator):
     """Create a duplicate of selected armature and meshes prepared for baking"""
@@ -20,7 +32,16 @@ class CreateCopyForBaking(Operator):
     
     @classmethod
     def poll(cls, context):
-        return bpy.data.is_saved and bake_utils.require_mesh_or_armature_selected(context)
+        # Ensure we have a mesh or armature selected
+        mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
+        # Check if selected items already exist in a bake collection
+        mesh_objects = bake_utils.get_all_selected_meshes(context)
+        in_bake_collection = any(bake_utils.is_in_bake_collection(obj) for obj in mesh_objects)
+        armature = next((obj for obj in context.selected_objects if obj.type == 'ARMATURE'), None)
+        if armature:
+            in_bake_collection = in_bake_collection or bake_utils.is_in_bake_collection(armature)
+        return mesh_or_armature_selected and not in_bake_collection
+        
     
     def execute(self, context):
         try:

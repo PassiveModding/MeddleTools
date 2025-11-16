@@ -56,13 +56,10 @@ def find_texture_in_material(material, tex_type):
             if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
                 return node.image
     
-    # Then try to find by socket connections
+    # Then try to find by socket connections using config
+    atlas_config = bake_utils.get_atlas_config()
+    socket_mapping = atlas_config['socket_mapping']
     links = material.node_tree.links
-    socket_mapping = {
-        'diffuse': 'Base Color',
-        'roughness': 'Roughness',
-        'alpha': 'Alpha'
-    }
     
     if tex_type in socket_mapping:
         for node in material.node_tree.nodes:
@@ -79,6 +76,17 @@ def find_texture_in_material(material, tex_type):
     
     return None
 
+def is_valid_bake_material(mat):
+    """Check if material is valid for baking (i.e. only contains compatible nodes)"""
+    if not mat.use_nodes:
+        return False
+    
+    ALLOWED_NODES = {'BSDF_PRINCIPLED', 'TEX_IMAGE', 'NORMAL_MAP', 'OUTPUT_MATERIAL' }
+    for node in mat.node_tree.nodes:
+        if node.type not in ALLOWED_NODES:
+            return False
+        
+    return True
 
 class RunAtlas(Operator):
     """Create texture atlas from selected mesh materials"""
@@ -86,10 +94,24 @@ class RunAtlas(Operator):
     bl_label = "Create Texture Atlas"
     bl_description = "Create a texture atlas from the materials of the selected mesh(es)"
     bl_options = {'REGISTER', 'UNDO'}
+
+        
     
     @classmethod
     def poll(cls, context):
-        return bake_utils.require_mesh_or_armature_selected(context)
+        mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
+        # Check if all materials are a bake material OR at least can function as one (i.e. only containing image, principled shader, etc.)
+        mesh_objects = bake_utils.get_all_selected_meshes(context)
+        valid_materials = True
+        for mesh in mesh_objects:
+            for mat in mesh.data.materials:
+                if mat and not is_valid_bake_material(mat):
+                    valid_materials = False
+                    break
+            if not valid_materials:
+                break
+            
+        return mesh_or_armature_selected and valid_materials
     
     def execute(self, context):
         meshes = bake_utils.get_all_selected_meshes(context)        
@@ -229,16 +251,10 @@ class RunAtlas(Operator):
         num_materials = len(materials)
         self.report({'INFO'}, f"Creating atlas from {num_materials} material(s)...")
         
-        # Check if alpha should be packed into diffuse
-        pack_alpha = context.scene.meddle_settings.pack_alpha
-        
-        # Determine texture types based on pack_alpha setting
-        if pack_alpha:
-            texture_types = ['diffuse', 'normal', 'roughness']
-            logger.info("Pack alpha enabled - alpha will be packed into diffuse texture")
-        else:
-            texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
-            logger.info("Pack alpha disabled - separate alpha texture will be created")
+        # Get atlas configuration
+        atlas_config = bake_utils.get_atlas_config()
+        texture_types = atlas_config['texture_types']
+        logger.info(f"Atlas texture types: {texture_types}")
         
         material_info = self.analyze_material_sizes(materials, texture_types, joined_mesh.data)
         atlas_layout = self.calculate_atlas_layout(material_info)
@@ -249,10 +265,10 @@ class RunAtlas(Operator):
         self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
         atlas_images = self.create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
-        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha)
+        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types)
         
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
-        atlas_material = self.create_atlas_material(atlas_name, atlas_images, pack_alpha)
+        atlas_material = self.create_atlas_material(atlas_name, atlas_images)
         
         joined_mesh.data.materials.clear()
         joined_mesh.data.materials.append(atlas_material)
@@ -300,7 +316,7 @@ class RunAtlas(Operator):
         
         return atlas_images
     
-    def copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha):
+    def copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types):
         """Copy material textures into atlas and build UV mapping"""
         material_uv_mapping = {}
         material_info_by_idx = {info['index']: info for info in material_info}
@@ -334,11 +350,7 @@ class RunAtlas(Operator):
             material_uv_mapping[mat_idx] = (u_offset, v_offset, u_scale, v_scale)
 
             logger.info(f"Material {mat_idx} ({material.name}) -> pos ({tile_x}, {tile_y}) size ({tile_w}x{tile_h})")
-
-            # Handle alpha texture separately if pack_alpha is enabled
-            alpha_source = None
-            if pack_alpha:
-                alpha_source = find_texture_in_material(material, 'alpha')
+            alpha_source = find_texture_in_material(material, 'alpha')
 
             for tex_type in texture_types:
                 source_image = find_texture_in_material(material, tex_type)
@@ -349,7 +361,7 @@ class RunAtlas(Operator):
 
                 try:
                     # Pass alpha source if we're packing alpha into diffuse
-                    alpha_img = alpha_source if (pack_alpha and tex_type == 'diffuse') else None
+                    alpha_img = alpha_source
                     
                     self.copy_texture_to_atlas(
                         source_image,
@@ -369,7 +381,7 @@ class RunAtlas(Operator):
 
         return material_uv_mapping
     
-    def create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
+    def create_atlas_material(self, atlas_name, atlas_images):
         """Create material with atlas textures"""
         atlas_material = bpy.data.materials.new(name=atlas_name)
         atlas_material.use_nodes = True
@@ -378,29 +390,13 @@ class RunAtlas(Operator):
         
         nodes.clear()
         
-        output_node = nodes.new('ShaderNodeOutputMaterial')
-        output_node.location = (400, 0)
+        # Get atlas configuration
+        atlas_config = bake_utils.get_atlas_config()
+        texture_configs = atlas_config['texture_node_configs']
+        special_nodes_config = atlas_config['special_nodes']
+        connections = atlas_config['node_connections']
         
-        bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
-        bsdf_node.location = (0, 0)
-        bsdf_node.inputs['IOR'].default_value = 1.0
-        bsdf_node.inputs['Metallic'].default_value = 0.0
-        
-        # Configure texture nodes based on pack_alpha setting
-        if pack_alpha:
-            texture_configs = [
-                ('diffuse', (-400, 300), 'Atlas Diffuse'),
-                ('normal', (-400, 0), 'Atlas Normal'),
-                ('roughness', (-400, -300), 'Atlas Roughness')
-            ]
-        else:
-            texture_configs = [
-                ('diffuse', (-400, 300), 'Atlas Diffuse'),
-                ('alpha', (-400, 100), 'Atlas Alpha'),
-                ('normal', (-400, -100), 'Atlas Normal'),
-                ('roughness', (-400, -300), 'Atlas Roughness')
-            ]
-        
+        # Create texture nodes
         texture_nodes = {}
         for tex_type, location, label in texture_configs:
             tex_node = nodes.new('ShaderNodeTexImage')
@@ -409,23 +405,26 @@ class RunAtlas(Operator):
             tex_node.label = label
             texture_nodes[tex_type] = tex_node
         
-        normal_map = nodes.new('ShaderNodeNormalMap')
-        normal_map.location = (-100, -100)
+        # Create special nodes (normal_map, bsdf, output)
+        special_nodes = {}
+        for node_key, config in special_nodes_config.items():
+            node = nodes.new(config['type'])
+            node.location = config['location']
+            special_nodes[node_key] = node
+            
+            # Set input values if specified
+            if 'inputs' in config:
+                for input_name, value in config['inputs'].items():
+                    node.inputs[input_name].default_value = value
         
-        # Connect nodes
-        links.new(texture_nodes['diffuse'].outputs['Color'], bsdf_node.inputs['Base Color'])
+        # Combine all nodes for connection lookups
+        all_nodes = {**texture_nodes, **special_nodes}
         
-        if pack_alpha:
-            # When packing, use diffuse's alpha channel
-            links.new(texture_nodes['diffuse'].outputs['Alpha'], bsdf_node.inputs['Alpha'])
-        else:
-            # When not packing, use separate alpha texture
-            links.new(texture_nodes['alpha'].outputs['Color'], bsdf_node.inputs['Alpha'])
-        
-        links.new(texture_nodes['roughness'].outputs['Color'], bsdf_node.inputs['Roughness'])
-        links.new(texture_nodes['normal'].outputs['Color'], normal_map.inputs['Color'])
-        links.new(normal_map.outputs['Normal'], bsdf_node.inputs['Normal'])
-        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
+        # Create connections based on config
+        for from_key, from_output, to_key, to_input in connections:
+            from_node = all_nodes[from_key]
+            to_node = all_nodes[to_key]
+            links.new(from_node.outputs[from_output], to_node.inputs[to_input])
         
         return atlas_material
     
