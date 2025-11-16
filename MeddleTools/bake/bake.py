@@ -221,6 +221,16 @@ class RunBake(Operator):
             location_offset = node_config['location_offset']
             node.location = (duplicate_node.location.x + location_offset[0], 
                            duplicate_node.location.y + location_offset[1])
+            
+            # Set node operation if specified (for math nodes)
+            if 'operation' in node_config:
+                node.operation = node_config['operation']
+            
+            # Set node inputs if specified
+            if 'inputs' in node_config:
+                for input_index, value in node_config['inputs'].items():
+                    node.inputs[input_index].default_value = value
+            
             special_nodes[node_key] = node
         
         # Connect nodes according to config
@@ -268,14 +278,7 @@ class RunBake(Operator):
         clear = True
         selected_to_active = False
         normal_space = "TANGENT"
-        bake_margin = bake_utils.calculate_bake_margin(max_image_size)
-        remap_target_socket_name = None
-        
-        # Check if this pass requires remapping to Emission
-        if pass_config.get('remap_to_emission', False):
-            remap_target_socket_name = 'Emission Strength'
-            logger.info(f"Will remap {bake_name} to Emission for baking")
-        
+        bake_margin = bake_utils.calculate_bake_margin(max_image_size)        
         logger.info(f"Bake margin set to: {bake_margin} pixels")
 
         def create_bake_image(bake_name, background_color, width, height, alpha_mode, colorspace):
@@ -292,95 +295,67 @@ class RunBake(Operator):
         
         # create image texture node and link to bake_node
         image_node = material.node_tree.nodes.new('ShaderNodeTexImage')
-        image = None
-        if bake_name == 'normal':
-            # workaround for now
-            # find g_SamplerNormal_PngCachePath and just use that image instead of baking
-            normal_image = None
-            for node in material.node_tree.nodes:
-                if node.type == 'TEX_IMAGE' and node.image and "g_SamplerNormal_PngCachePath" in node.label:
-                    normal_image = node.image
-                    break
-            
-            if normal_image and normal_image.has_data and uv_layer_name == "UVMap" and False: # Can only do workaround if using original UVs
-                def img_channels_as_nparray(image):
-                    pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
-                    image.pixels.foreach_get(pixel_buffer)
-                    return pixel_buffer.reshape(4, -1, order='F')
-                def nparray_channels_to_img(image, nparr):
-                    assert(nparr.shape[0] == 4)
-                    assert(nparr.shape[1] == image.size[0] * image.size[1])
-                    image.pixels.foreach_set(np.ravel(nparr, order='F'))
-                
-                # copied_image.filepath = bpy.path.abspath(f"//Bake/{copied_image.name}.png")
-                
-                pixel_data = img_channels_as_nparray(normal_image)
-                # zero out blue and alpha channels
-                pixel_data[2, :] = 1.0  # Blue channel
-                pixel_data[3, :] = 1.0  # Alpha channel
-                
-                copied_image = create_bake_image(bake_name, background_color, normal_image.size[0], normal_image.size[1], alpha_mode, colorspace)
-                
-                nparray_channels_to_img(copied_image, pixel_data)
-
-                image_node.image = copied_image
-                return image_node
-            else:
-                # Use standard baking for normal map
-                image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1], alpha_mode, colorspace)
-                image_node.image = image
-        else:
-            # Standard baking for other passes (diffuse, roughness, etc.)
-            image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1], alpha_mode, colorspace)
-            image_node.image = image
+        image = create_bake_image(bake_name, background_color, max_image_size[0], max_image_size[1], alpha_mode, colorspace)
+        image_node.image = image
         
+        # Track all original connections for all BSDF nodes
+        original_connections = []
+        temp_nodes = []
         
-        # For non-color/normal channels, remap the input to Emission for more reliable baking
-        # Emission is better for scalar values that can exceed 0-1 range or need precise preservation
-        remapped_inputs = []
-        
-        if remap_target_socket_name:
-            for node in material.node_tree.nodes:
-                if node.type == 'BSDF_PRINCIPLED':
-                    for required_input_name in required_inputs:
-                        input_socket = node.inputs.get(required_input_name)
-                        if input_socket and input_socket.is_linked:
-                            # Store the original connection
-                            for link in input_socket.links:
-                                from_node = link.from_node
-                                from_socket = link.from_socket
-                                
-                                # Disconnect from original input
-                                material.node_tree.links.remove(link)
-                                
-                                # Connect to Emission instead
-                                target_socket = node.inputs.get(remap_target_socket_name)
-                                if target_socket:
-                                    material.node_tree.links.new(from_socket, target_socket)
-                                    
-                                    # Store for restoration
-                                    remapped_inputs.append((input_socket, from_node, from_socket, target_socket))
-                                    logger.info(f"Remapped {required_input_name} to {remap_target_socket_name} for {bake_name} bake")
-        
-        # for each bsdf node, disconnect all inputs except those needed for bake, then re-connect after bake
-        # this is to prevent other inputs from affecting the bake result
-        disconnect_inputs = []
+        # Store all connections for BSDF nodes before any modifications
         for node in material.node_tree.nodes:
             if node.type == 'BSDF_PRINCIPLED':
                 for input_socket in node.inputs:
-                    # For remapped bakes, keep the target socket connected; for normal bakes, keep required inputs
-                    if remapped_inputs:
-                        inputs_to_keep = [remap_target_socket_name] if remap_target_socket_name else []
-                    else:
-                        inputs_to_keep = required_inputs
-                    
-                    if input_socket.name not in inputs_to_keep:
-                        # disconnect
+                    if input_socket.is_linked:
                         for link in input_socket.links:
-                            from_node = link.from_node
-                            from_socket = link.from_socket
-                            disconnect_inputs.append((input_socket, from_node, from_socket))
-                            material.node_tree.links.remove(link)         
+                            original_connections.append({
+                                'input_socket': input_socket,
+                                'from_node': link.from_node,
+                                'from_socket': link.from_socket,
+                                'input_name': input_socket.name
+                            })
+        
+        # Check if this pass requires remapping to Emission
+        remap_target_socket_name = None
+        ior_to_emission = False
+        if pass_config.get('custom_mapping') == 'EmissionStrength':
+            remap_target_socket_name = 'Emission Strength'
+        elif pass_config.get('custom_mapping') == 'IORToEmissionStrength':
+            remap_target_socket_name = 'Emission Strength'
+            ior_to_emission = True
+        
+        # Now disconnect everything and reconnect only what's needed for baking
+        for node in material.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                # Disconnect all inputs
+                for input_socket in node.inputs:
+                    for link in list(input_socket.links):
+                        material.node_tree.links.remove(link)
+                
+                # Reconnect only the required inputs for this bake pass
+                for conn in original_connections:
+                    if conn['input_name'] in required_inputs:
+                        if remap_target_socket_name:
+                            # Remap to emission for special passes
+                            target_socket = node.inputs.get(remap_target_socket_name)
+                            if target_socket:
+                                if ior_to_emission:
+                                    # Create a Math node to remap IOR to Emission Strength
+                                    math_node = material.node_tree.nodes.new('ShaderNodeMath')
+                                    math_node.operation = 'SUBTRACT'
+                                    math_node.inputs[1].default_value = 1.0
+                                    math_node.location = (conn['from_node'].location.x + 200, conn['from_node'].location.y)
+                                    
+                                    material.node_tree.links.new(conn['from_socket'], math_node.inputs[0])
+                                    material.node_tree.links.new(math_node.outputs[0], target_socket)
+                                    temp_nodes.append(math_node)
+                                    logger.info(f"Remapped {conn['input_name']} to {remap_target_socket_name} via Math node for {bake_name} bake")
+                                else:
+                                    material.node_tree.links.new(conn['from_socket'], target_socket)
+                                    logger.info(f"Remapped {conn['input_name']} to {remap_target_socket_name} for {bake_name} bake")
+                        else:
+                            # Normal connection for standard bake passes
+                            material.node_tree.links.new(conn['from_socket'], conn['input_socket'])         
         
         # ensure image is active
         material.node_tree.nodes.active = image_node        
@@ -415,21 +390,24 @@ class RunBake(Operator):
         except Exception as e:
             logger.error(f"Bake failed for material {material.name}, pass {bake_name}: {e}")
             raise e
+
+        # Clean up temporary nodes
+        for temp_node in temp_nodes:
+            material.node_tree.nodes.remove(temp_node)
+
+        # Restore all original connections
+        for node in material.node_tree.nodes:
+            if node.type == 'BSDF_PRINCIPLED':
+                # Disconnect all current connections
+                for input_socket in node.inputs:
+                    for link in list(input_socket.links):
+                        material.node_tree.links.remove(link)
         
-        # First, restore remapped inputs (disconnect from temporary target and reconnect to original socket)
-        for original_socket, from_node, from_socket, temp_target_socket in remapped_inputs:
-            # Remove the temporary connection (e.g., from Emission)
-            for link in temp_target_socket.links:
-                if link.from_socket == from_socket:
-                    material.node_tree.links.remove(link)
-                    break
-            
-            # Restore original connection
-            material.node_tree.links.new(from_socket, original_socket)
-            logger.info(f"Restored {original_socket.name} connection after {bake_name} bake")
+        # Reconnect all original connections
+        for conn in original_connections:
+            material.node_tree.links.new(conn['from_socket'], conn['input_socket'])
         
-        # Then, reconnect previously disconnected inputs using utility function
-        bake_utils.reconnect_inputs(disconnect_inputs)
+        logger.info(f"Restored {len(original_connections)} original connection(s) after {bake_name} bake")
         
         return image_node
 

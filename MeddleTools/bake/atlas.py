@@ -16,12 +16,14 @@ def get_atlas_label(context):
             if mat:
                 distinct_materials.add(mat.name)
     num_materials = len(distinct_materials)
+    num_meshes = len(meshes)
+    target_count = context.scene.meddle_settings.atlas_target_material_count
     if num_materials == 0:
-        return "Create Texture Atlas (No materials found)"
+        return "Atlas & Join (No materials found)"
     elif num_materials == 1:
-        return "Create Texture Atlas (1 material)"
+        return "Atlas & Join (No atlasing needed)"
     else:
-        return f"Create Texture Atlas ({num_materials} materials)"
+        return f"Atlas & Join ({num_materials} -> {target_count} materials & meshes)"
 
 def img_as_nparray(image):
     """Convert Blender image to numpy array (H, W, 4)"""
@@ -81,7 +83,7 @@ def is_valid_bake_material(mat):
     if not mat.use_nodes:
         return False
     
-    ALLOWED_NODES = {'BSDF_PRINCIPLED', 'TEX_IMAGE', 'NORMAL_MAP', 'OUTPUT_MATERIAL' }
+    ALLOWED_NODES = {'BSDF_PRINCIPLED', 'TEX_IMAGE', 'NORMAL_MAP', 'OUTPUT_MATERIAL', "MATH" }
     for node in mat.node_tree.nodes:
         if node.type not in ALLOWED_NODES:
             return False
@@ -89,10 +91,10 @@ def is_valid_bake_material(mat):
     return True
 
 class RunAtlas(Operator):
-    """Create texture atlas from selected mesh materials"""
+    """Combine meshes and create texture atlas to reach target material count"""
     bl_idname = "meddle.run_atlas"
-    bl_label = "Create Texture Atlas"
-    bl_description = "Create a texture atlas from the materials of the selected mesh(es)"
+    bl_label = "Atlas & Join Meshes"
+    bl_description = "Join meshes and create texture atlases to reduce material count (1 material per mesh)"
     bl_options = {'REGISTER', 'UNDO'}
 
         
@@ -103,15 +105,18 @@ class RunAtlas(Operator):
         # Check if all materials are a bake material OR at least can function as one (i.e. only containing image, principled shader, etc.)
         mesh_objects = bake_utils.get_all_selected_meshes(context)
         valid_materials = True
+        material_count = 0
         for mesh in mesh_objects:
             for mat in mesh.data.materials:
                 if mat and not is_valid_bake_material(mat):
                     valid_materials = False
                     break
+                if mat:
+                    material_count += 1
             if not valid_materials:
                 break
             
-        return mesh_or_armature_selected and valid_materials
+        return mesh_or_armature_selected and valid_materials and material_count > 1
     
     def execute(self, context):
         meshes = bake_utils.get_all_selected_meshes(context)        
@@ -119,29 +124,94 @@ class RunAtlas(Operator):
             self.report({'ERROR'}, "No mesh objects selected.")
             return {'CANCELLED'}
         
-        if len(meshes) > 1:
-            self.report({'INFO'}, f"Joining {len(meshes)} meshes...")
-            logger.info(f"Joining {len(meshes)} meshes for atlas")
-            
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in meshes:
-                obj.select_set(True)
-            
-            context.view_layer.objects.active = meshes[0]
-            bpy.ops.object.join()
-            joined_mesh = context.view_layer.objects.active
-        else:
-            joined_mesh = meshes[0]
+        target_count = context.scene.meddle_settings.atlas_target_material_count
         
-        atlas_name = f"Atlas_{joined_mesh.name}"
-        atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
+        # Get all materials from selected meshes
+        all_materials = []
+        mesh_by_material = {}  # Map material -> list of meshes using it
         
-        if atlas_material:
-            self.report({'INFO'}, f"Texture atlas created successfully: {atlas_material.name}")
-            return {'FINISHED'}
-        else:
-            self.report({'ERROR'}, "Failed to create texture atlas")
+        for mesh in meshes:
+            for mat in mesh.data.materials:
+                if mat:
+                    if mat not in mesh_by_material:
+                        mesh_by_material[mat] = []
+                        all_materials.append(mat)
+                    if mesh not in mesh_by_material[mat]:
+                        mesh_by_material[mat].append(mesh)
+        
+        num_materials = len(all_materials)
+        logger.info(f"Found {num_materials} unique materials across {len(meshes)} meshes")
+        
+        if num_materials == 0:
+            self.report({'ERROR'}, "No materials found on selected meshes")
             return {'CANCELLED'}
+        
+        if target_count >= num_materials:
+            logger.info(f"Target count ({target_count}) >= material count ({num_materials}), no atlasing needed")
+            self.report({'INFO'}, f"Target material count is >= current count, no atlasing performed")
+            return {'CANCELLED'}
+        
+        # Group materials into target_count groups
+        materials_per_atlas = num_materials // target_count
+        remainder = num_materials % target_count
+        
+        material_groups = []
+        start_idx = 0
+        for i in range(target_count):
+            group_size = materials_per_atlas + (1 if i < remainder else 0)
+            material_groups.append(all_materials[start_idx:start_idx + group_size])
+            start_idx += group_size
+        
+        # Process each group: collect meshes, join them, create atlas
+        atlas_meshes = []
+        for group_idx, material_group in enumerate(material_groups):
+            logger.info(f"Processing group {group_idx + 1}/{target_count} with {len(material_group)} materials")
+            
+            # Collect all meshes that use materials in this group
+            group_meshes = set()
+            for mat in material_group:
+                group_meshes.update(mesh_by_material[mat])
+            
+            group_meshes = list(group_meshes)
+            logger.info(f"Group {group_idx} contains {len(group_meshes)} meshes")
+            
+            # Join meshes in this group
+            if len(group_meshes) > 1:
+                # Store and rename active UV layers to a common name before joining
+                common_uv_name = "MEDDLE_ATLAS_UV"
+                for mesh in group_meshes:
+                    if mesh.data.uv_layers:
+                        active_uv = mesh.data.uv_layers.active
+                        if active_uv:
+                            active_uv.name = common_uv_name
+                            logger.info(f"Renamed UV layer to '{common_uv_name}' on mesh '{mesh.name}'")
+                
+                bpy.ops.object.select_all(action='DESELECT')
+                for obj in group_meshes:
+                    obj.select_set(True)
+                
+                context.view_layer.objects.active = group_meshes[0]
+                bpy.ops.object.join()
+                joined_mesh = context.view_layer.objects.active
+                
+                # Set the common UV layer as active on the joined mesh
+                bake_utils.set_active_uv_layer(joined_mesh, common_uv_name)
+            else:
+                joined_mesh = group_meshes[0]
+            
+            # Create atlas for this group
+            atlas_name = f"Atlas_{joined_mesh.name}_{group_idx}" if target_count > 1 else f"Atlas_{joined_mesh.name}"
+            atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
+            
+            if atlas_material:
+                atlas_meshes.append(joined_mesh)
+                logger.info(f"Successfully created atlas for group {group_idx}")
+            else:
+                self.report({'ERROR'}, f"Failed to create atlas for group {group_idx}")
+                return {'CANCELLED'}
+        
+        self.report({'INFO'}, f"Created {len(atlas_meshes)} atlas mesh(es) successfully")
+        return {'FINISHED'}
     
     def analyze_material_sizes(self, materials, texture_types, mesh):
         """Analyze materials to determine texture sizes"""

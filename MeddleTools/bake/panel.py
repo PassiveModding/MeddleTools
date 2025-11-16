@@ -192,9 +192,12 @@ class MeddleBakePanel(bpy.types.Panel):
             
         mat_box.prop(settings, "bake_samples")
         mat_box.operator(RunBake.bl_idname, text=get_bake_label(context))
-        box.separator()
-        box.operator(JoinMeshes.bl_idname, text=get_join_label(context))
-        box.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
+        
+        atlas_box = box.box()
+        atlas_box.label(text="Combine & Atlas", icon='TEXTURE')
+        atlas_box.prop(settings, "atlas_target_material_count", text="Target Materials")
+        atlas_box.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
+        atlas_box.operator(JoinMeshes.bl_idname, text=get_join_label(context))
 
         # Export Section
         box = layout.box()

@@ -88,6 +88,14 @@ class MeddleSettings(bpy.types.PropertyGroup):
         default=0
     )
     
+    atlas_target_material_count: bpy.props.IntProperty(
+        name="Target Material Count",
+        description="Target number of material slots to atlas down to",
+        default=4,
+        min=1,
+        max=32
+    )
+    
 def register():
     bpy.utils.register_class(MaterialBakeSettings)
     bpy.utils.register_class(MeddleSettings)

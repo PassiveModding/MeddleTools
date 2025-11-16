@@ -40,6 +40,7 @@ class JoinMeshes(Operator):
         
         # Store and rename active UV layers to a common name before joining
         common_uv_name = "MEDDLE_ACTIVE_UV"
+        uv_index = 0
         uv_renames = []  # Store (mesh, original_name, uv_layer) for restoration
         
         for mesh in selected_meshes:
@@ -48,9 +49,10 @@ class JoinMeshes(Operator):
                 if active_uv:
                     original_name = active_uv.name
                     uv_renames.append((mesh, original_name, active_uv))
-                    active_uv.name = common_uv_name
-                    logger.info(f"Renamed UV layer '{original_name}' to '{common_uv_name}' on mesh '{mesh.name}'")
-        
+                    active_uv.name = f"{common_uv_name}_{uv_index}"
+                    uv_index += 1
+                    logger.info(f"Renamed UV layer '{original_name}' to '{common_uv_name}_{uv_index}' on mesh '{mesh.name}'")
+
         # Deselect all objects first
         bpy.ops.object.select_all(action='DESELECT')
         

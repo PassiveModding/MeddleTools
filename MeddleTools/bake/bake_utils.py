@@ -275,7 +275,24 @@ def get_bake_pass_config(pass_name):
             'required_inputs': ['Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color',
-            'remap_to_emission': True
+            'custom_mapping': 'EmissionStrength'
+        },
+        'ior': {
+            'bake_type': 'EMIT',
+            'background_color': (1.0, 1.0, 1.0, 1.0),
+            'pass_filter': set(),
+            'required_inputs': ['IOR'],
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color',
+            'custom_mapping': 'IORToEmissionStrength'
+        },
+        'emission': {
+            'bake_type': 'EMIT',
+            'background_color': (0.0, 0.0, 0.0, 1.0),
+            'pass_filter': set(),
+            'required_inputs': ['Emission Color', 'Emission Strength'],
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'sRGB'
         }
     }
     
@@ -289,7 +306,7 @@ def get_bake_material_config() -> dict:
     """
     return {
         # Bake passes to execute in order
-        'bake_passes': ['diffuse', 'normal', 'roughness', 'metalness'],
+        'bake_passes': ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission'],
         
         # Material node connections after baking
         # Format: (from_node_key, from_output, to_node_key, to_input)
@@ -301,6 +318,10 @@ def get_bake_material_config() -> dict:
             ('normal', 'Color', 'normal_map', 'Color'),
             ('normal_map', 'Normal', 'bsdf', 'Normal'),
             ('bsdf', 'BSDF', 'output', 'Surface'),
+            ('ior', 'Color', 'ior_math', 'Value'),
+            ('ior_math', 'Value', 'bsdf', 'IOR'),
+            ('emission', 'Color', 'bsdf', 'Emission Color'),
+            ('emission', 'Alpha', 'bsdf', 'Emission Strength'),
         ],
         
         # Special nodes needed for baked material
@@ -308,9 +329,15 @@ def get_bake_material_config() -> dict:
             'normal_map': {
                 'type': 'ShaderNodeNormalMap',
                 'location_offset': (-300, -200)  # Relative to bsdf node
+            },
+            'ior_math': {
+                'type': 'ShaderNodeMath',
+                'location_offset': (-300, -700),  # Relative to bsdf node
+                'operation': 'ADD',
+                'inputs': {1: 1.0}  # Add 1.0 to remap 0-1 back to 1-2
             }
         },
-        
+
         # BSDF node default inputs
         'bsdf_defaults': {
             'IOR': 1.2,
@@ -329,7 +356,7 @@ def get_atlas_config() -> dict:
         Dictionary with texture_types, socket_mapping, material setup and other atlas settings
     """
     return {
-        'texture_types': ['diffuse', 'normal', 'roughness', 'metalness'],
+        'texture_types': ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission'],
         'pack_alpha': True,  # Whether to pack alpha channel into diffuse texture
         
         # Socket mapping for finding textures by connection
@@ -337,7 +364,9 @@ def get_atlas_config() -> dict:
             'diffuse': 'Base Color',
             'roughness': 'Roughness',
             'metalness': 'Metallic',
-            'alpha': 'Alpha'
+            'alpha': 'Alpha',
+            'ior': 'IOR',
+            'emission': 'Emission Color'
         },
         
         # Texture node configurations for atlas material setup
@@ -345,7 +374,9 @@ def get_atlas_config() -> dict:
             ('diffuse', (-400, 300), 'Atlas Diffuse'),
             ('normal', (-400, 0), 'Atlas Normal'),
             ('roughness', (-400, -300), 'Atlas Roughness'),
-            ('metalness', (-400, -600), 'Atlas Metalness')
+            ('metalness', (-400, -600), 'Atlas Metalness'),
+            ('ior', (-400, -900), 'Atlas IOR'),
+            ('emission', (-400, -1200), 'Atlas Emission')
         ],
         
         # Node connections for atlas material
@@ -358,6 +389,10 @@ def get_atlas_config() -> dict:
             ('normal', 'Color', 'normal_map', 'Color'),
             ('normal_map', 'Normal', 'bsdf', 'Normal'),
             ('bsdf', 'BSDF', 'output', 'Surface'),
+            ('ior', 'Color', 'ior_math', 'Value'),
+            ('ior_math', 'Value', 'bsdf', 'IOR'),
+            ('emission', 'Color', 'bsdf', 'Emission Color'),
+            ('emission', 'Alpha', 'bsdf', 'Emission Strength')
         ],
         
         # Special node setup
@@ -365,6 +400,12 @@ def get_atlas_config() -> dict:
             'normal_map': {
                 'type': 'ShaderNodeNormalMap',
                 'location': (-100, -100)
+            },
+            'ior_math': {
+                'type': 'ShaderNodeMath',
+                'location': (-100, -700),
+                'operation': 'ADD',
+                'inputs': {1: 1.0}  # Add 1.0 to remap 0-1 back to 1-2
             },
             'bsdf': {
                 'type': 'ShaderNodeBsdfPrincipled',

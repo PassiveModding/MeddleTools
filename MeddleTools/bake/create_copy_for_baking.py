@@ -160,13 +160,24 @@ class CreateCopyForBaking(Operator):
                 if mat and mat.name in material_copies:
                     mesh_copy.data.materials[i] = material_copies[mat.name]
 
-        # Position armature/meshes to side of original for viewing
+            # Position armature/meshes to side of original for viewing
         if armature_copy:
             armature_copy.location.x += 1.0
         else:
             # If no armature, offset all joined meshes
             for mesh in joined_meshes:
                 mesh.location.x += 1.0
+
+        # Select the copied objects
+        bpy.ops.object.select_all(action='DESELECT')
+        if armature_copy:
+            armature_copy.select_set(True)
+            context.view_layer.objects.active = armature_copy
+        else:
+            for mesh in joined_meshes:
+                mesh.select_set(True)
+            if joined_meshes:
+                context.view_layer.objects.active = joined_meshes[0]
 
         return (armature_copy, joined_meshes, material_copies)
     
