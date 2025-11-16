@@ -33,6 +33,7 @@ class JoinMeshes(Operator):
         return mesh_or_armature_selected and len(selected_meshes) >= 2
     
     def execute(self, context):
+        armature = next((obj for obj in context.selected_objects if obj.type == 'ARMATURE'), None)
         selected_meshes = bake_utils.get_all_selected_meshes(context)
         
         logger.info(f"Joining {len(selected_meshes)} meshes into one")
@@ -40,7 +41,6 @@ class JoinMeshes(Operator):
         
         # Store and rename active UV layers to a common name before joining
         common_uv_name = "MEDDLE_ACTIVE_UV"
-        uv_index = 0
         uv_renames = []  # Store (mesh, original_name, uv_layer) for restoration
         
         for mesh in selected_meshes:
@@ -49,10 +49,9 @@ class JoinMeshes(Operator):
                 if active_uv:
                     original_name = active_uv.name
                     uv_renames.append((mesh, original_name, active_uv))
-                    active_uv.name = f"{common_uv_name}_{uv_index}"
-                    uv_index += 1
-                    logger.info(f"Renamed UV layer '{original_name}' to '{common_uv_name}_{uv_index}' on mesh '{mesh.name}'")
-
+                    active_uv.name = common_uv_name
+                    logger.info(f"Renamed UV layer '{original_name}' to '{common_uv_name}' on mesh '{mesh.name}'")
+        
         # Deselect all objects first
         bpy.ops.object.select_all(action='DESELECT')
         
@@ -68,10 +67,22 @@ class JoinMeshes(Operator):
         
         joined_mesh = context.view_layer.objects.active
         
-        # Restore the common UV layer name as active on the joined mesh
+
         bake_utils.set_active_uv_layer(joined_mesh, common_uv_name)
+        
+        # remove all other UV layers except the active one
+        uv_layer_names = [uv.name for uv in joined_mesh.data.uv_layers]
+        for uv_name in uv_layer_names:
+            if uv_name != common_uv_name:
+                joined_mesh.data.uv_layers.remove(joined_mesh.data.uv_layers[uv_name])
+                logger.info(f"Removed UV layer '{uv_name}' from joined mesh '{joined_mesh.name}'")
         
         logger.info(f"Meshes joined into: {joined_mesh.name}")
         self.report({'INFO'}, f"Successfully joined into {joined_mesh.name}")
+        
+        # re-select armature if it exists
+        if armature:
+            armature.select_set(True)
+            context.view_layer.objects.active = armature
         
         return {'FINISHED'}

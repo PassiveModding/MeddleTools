@@ -32,8 +32,10 @@ def determine_largest_image_size(material):
     if max_width == 0 or max_height == 0:
         max_width = 1024
         max_height = 1024
+        
+    max_dimension = max(max_width, max_height)
     
-    return (max_width, max_height)
+    return (max_dimension, max_dimension) # want to keep square sizes for baking
 
 def require_mesh_or_armature_selected(context):
     """Check if operation can be executed"""
@@ -136,7 +138,8 @@ def get_uv_islands(mesh, full_island_detection=False):
 
 def calculate_bake_margin(image_size):
     """Calculate bake margin based on image size (0.78125% of max dimension)"""
-    return int(math.ceil(0.0078125 * max(image_size)))
+    # min size of 4 pixels
+    return max(4, int(math.ceil(0.0078125 * max(image_size))))
 
 def create_bake_image(name, width, height, background_color=(0.0, 0.0, 0.0, 1.0), alpha_mode='STRAIGHT', colorspace='sRGB'):
     """Create a new image for baking with proper settings
@@ -439,7 +442,7 @@ def set_active_uv_layer(mesh, uv_layer_name):
         uv_layer = mesh.data.uv_layers[uv_layer_name]
         mesh.data.uv_layers.active = uv_layer
         uv_layer.active_render = True
-        logger.info(f"Set active UV layer to {uv_layer_name} on mesh {mesh.name}")
+        logger.info(f"Set active UV layer to {uv_layer_name} on mesh {mesh.name}")        
         return True
     else:
         logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")

@@ -429,15 +429,18 @@ class RunBake(Operator):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         
-        # Generate Smart UV Project
         try:
-            bpy.ops.uv.smart_project(
-                angle_limit=66.0,
-                island_margin=0.02,
-                area_weight=0.0,
-                correct_aspect=True,
-                scale_to_bounds=False
-            )
+            # bpy.ops.uv.smart_project(
+            #     angle_limit=66.0,
+            #     island_margin=0.02,
+            #     area_weight=0.0,
+            #     correct_aspect=True,
+            #     scale_to_bounds=False
+            # )
+            bpy.ops.uv.unwrap(method='ANGLE_BASED', 
+                              margin=0.02, 
+                              fill_holes=True, 
+                              margin_method='SCALED')
             logger.info(f"Successfully generated UVs for {mesh_obj.name}")
         except Exception as e:
             logger.error(f"Failed to generate UVs for {mesh_obj.name}: {e}")
