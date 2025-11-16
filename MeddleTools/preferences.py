@@ -23,6 +23,14 @@ class MaterialBakeSettings(bpy.types.PropertyGroup):
         min=64,
         max=8192
     )
+    
+    atlas_group: bpy.props.IntProperty(
+        name="Atlas Group",
+        description="Which atlas group this material belongs to (0 = auto-assign)",
+        default=0,
+        min=0,
+        max=32
+    )
 
 class MeddleSettings(bpy.types.PropertyGroup):
     # gltf_bone_dir: bpy.props.EnumProperty(
@@ -86,14 +94,6 @@ class MeddleSettings(bpy.types.PropertyGroup):
         name="Active Material Index",
         description="Currently selected material in the list",
         default=0
-    )
-    
-    atlas_target_material_count: bpy.props.IntProperty(
-        name="Target Material Count",
-        description="Target number of material slots to atlas down to",
-        default=4,
-        min=1,
-        max=32
     )
     
 def register():

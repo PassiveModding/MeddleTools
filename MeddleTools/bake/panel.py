@@ -18,6 +18,7 @@ class MEDDLE_UL_MaterialBakeList(bpy.types.UIList):
             row.label(text=item.material_name, icon='MATERIAL')
             row.prop(item, "image_width", text="W")
             row.prop(item, "image_height", text="H")
+            row.prop(item, "atlas_group", text="Group")
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=item.material_name, icon='MATERIAL')
@@ -160,9 +161,6 @@ class MeddleBakePanel(bpy.types.Panel):
         box.operator(CreateCopyForBaking.bl_idname, text=get_create_copy_label(context))
         box.operator(CreateUVBakeLayers.bl_idname, text=get_create_uv_label(context))
         
-        mat_box = box.box()
-        mat_box.label(text="Bake Settings", icon='MATERIAL')
-        
         # Get materials and their settings
         current_materials = self.get_selected_materials(context)
         existing_settings = self.get_filtered_material_settings(context)
@@ -170,7 +168,7 @@ class MeddleBakePanel(bpy.types.Panel):
         
         # Show init/clear buttons
         if current_materials:
-            row = mat_box.row(align=True)
+            row = box.row(align=True)
             if len(existing_names) < len(current_materials):
                 row.operator(MEDDLE_OT_InitMaterialSettings.bl_idname, icon='ADD')
             if existing_settings:
@@ -179,25 +177,29 @@ class MeddleBakePanel(bpy.types.Panel):
         # Display existing settings
         if existing_settings:
             for mat_setting in existing_settings:
-                row = mat_box.row(align=True)
-                split = row.split(factor=0.6, align=True)
+                row = box.row(align=True)
+                split = row.split(factor=0.45, align=True)
                 split.label(text=mat_setting.material_name, icon='MATERIAL')
                 props_row = split.row(align=True)
                 props_row.prop(mat_setting, "image_width", text="W")
                 props_row.prop(mat_setting, "image_height", text="H")
+                props_row.prop(mat_setting, "atlas_group", text="G")
         elif current_materials:
-            mat_box.label(text="Click 'Initialize Settings' above", icon='INFO')
+            box.label(text="Click 'Initialize Settings' above", icon='INFO')
         else:
-            mat_box.label(text="No materials found.", icon='INFO')
+            box.label(text="No materials found.", icon='INFO')
             
-        mat_box.prop(settings, "bake_samples")
-        mat_box.operator(RunBake.bl_idname, text=get_bake_label(context))
+        # box.prop(settings, "bake_samples")
+        # box.operator(RunBake.bl_idname, text=get_bake_label(context)) 
+        # want to show bake samples and button side by side
+        box.separator()
+        row = box.row(align=True)
+        row.operator(RunBake.bl_idname, text=get_bake_label(context))
+        row.prop(settings, "bake_samples")
         
-        atlas_box = box.box()
-        atlas_box.label(text="Combine & Atlas", icon='TEXTURE')
-        atlas_box.prop(settings, "atlas_target_material_count", text="Target Materials")
-        atlas_box.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
-        atlas_box.operator(JoinMeshes.bl_idname, text=get_join_label(context))
+        row = box.row(align=True)
+        row.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
+        row.operator(JoinMeshes.bl_idname, text=get_join_label(context))
 
         # Export Section
         box = layout.box()

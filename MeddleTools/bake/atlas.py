@@ -17,13 +17,27 @@ def get_atlas_label(context):
                 distinct_materials.add(mat.name)
     num_materials = len(distinct_materials)
     num_meshes = len(meshes)
-    target_count = context.scene.meddle_settings.atlas_target_material_count
+    settings = context.scene.meddle_settings
+    
     if num_materials == 0:
         return "Atlas & Join (No materials found)"
     elif num_materials == 1:
         return "Atlas & Join (No atlasing needed)"
     else:
-        return f"Atlas & Join ({num_materials} -> {target_count} materials & meshes)"
+        # Count unique groups assigned
+        groups = set()
+        for mat_name in distinct_materials:
+            mat_setting = next((s for s in settings.material_bake_settings if s.material_name == mat_name), None)
+            if mat_setting:
+                groups.add(mat_setting.atlas_group if mat_setting.atlas_group > 0 else 0)
+        
+        num_groups = len(groups)
+        if 0 in groups and num_groups > 1:
+            return f"Atlas & Join ({num_materials} materials -> {num_groups-1}+ groups)"
+        elif num_groups == 1 and 0 in groups:
+            return f"Atlas & Join ({num_materials} materials -> individual atlases)"
+        else:
+            return f"Atlas & Join ({num_materials} materials -> {num_groups} groups)"
 
 def img_as_nparray(image):
     """Convert Blender image to numpy array (H, W, 4)"""
@@ -94,7 +108,7 @@ class RunAtlas(Operator):
     """Combine meshes and create texture atlas to reach target material count"""
     bl_idname = "meddle.run_atlas"
     bl_label = "Atlas & Join Meshes"
-    bl_description = "Join meshes and create texture atlases to reduce material count (1 material per mesh)"
+    bl_description = "Join meshes and create texture atlases to reduce material count (1 material per mesh), assign using the G input in material settings"
     bl_options = {'REGISTER', 'UNDO'}
 
         
@@ -124,7 +138,7 @@ class RunAtlas(Operator):
             self.report({'ERROR'}, "No mesh objects selected.")
             return {'CANCELLED'}
         
-        target_count = context.scene.meddle_settings.atlas_target_material_count
+        settings = context.scene.meddle_settings
         
         # Get all materials from selected meshes
         all_materials = []
@@ -146,26 +160,19 @@ class RunAtlas(Operator):
             self.report({'ERROR'}, "No materials found on selected meshes")
             return {'CANCELLED'}
         
-        if target_count >= num_materials:
-            logger.info(f"Target count ({target_count}) >= material count ({num_materials}), no atlasing needed")
-            self.report({'INFO'}, f"Target material count is >= current count, no atlasing performed")
+        # Group materials by their assigned atlas_group
+        material_groups = self.group_materials_manually(all_materials, settings)
+        logger.info(f"Manual grouping created {len(material_groups)} groups")
+        
+        # Check if atlasing is actually needed
+        if len(material_groups) >= num_materials:
+            self.report({'INFO'}, "All materials in separate groups, no atlasing needed")
             return {'CANCELLED'}
-        
-        # Group materials into target_count groups
-        materials_per_atlas = num_materials // target_count
-        remainder = num_materials % target_count
-        
-        material_groups = []
-        start_idx = 0
-        for i in range(target_count):
-            group_size = materials_per_atlas + (1 if i < remainder else 0)
-            material_groups.append(all_materials[start_idx:start_idx + group_size])
-            start_idx += group_size
         
         # Process each group: collect meshes, join them, create atlas
         atlas_meshes = []
         for group_idx, material_group in enumerate(material_groups):
-            logger.info(f"Processing group {group_idx + 1}/{target_count} with {len(material_group)} materials")
+            logger.info(f"Processing group {group_idx + 1}/{len(material_groups)} with {len(material_group)} materials")
             
             # Collect all meshes that use materials in this group
             group_meshes = set()
@@ -200,7 +207,7 @@ class RunAtlas(Operator):
                 joined_mesh = group_meshes[0]
             
             # Create atlas for this group
-            atlas_name = f"Atlas_{joined_mesh.name}_{group_idx}" if target_count > 1 else f"Atlas_{joined_mesh.name}"
+            atlas_name = f"Atlas_{joined_mesh.name}_{group_idx}" if len(material_groups) > 1 else f"Atlas_{joined_mesh.name}"
             atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
             
             if atlas_material:
@@ -244,8 +251,14 @@ class RunAtlas(Operator):
         return material_info
     
     def calculate_atlas_layout(self, material_info):
-        """Calculate efficient atlas layout using skyline packing algorithm with square optimization"""
-        sorted_materials = sorted(material_info, key=lambda x: x['width'] * x['height'], reverse=True)
+        """Calculate efficient atlas layout using improved skyline packing algorithm
+        
+        This algorithm maintains a skyline contour and places rectangles in the lowest 
+        available position, allowing better 2D space utilization.
+
+        Returns width, height, placements, and packing metrics including efficiency and waste.
+        """
+        sorted_materials = sorted(material_info, key=lambda x: max(x['width'], x['height']), reverse=True)
         logger.info(f"Packing {len(sorted_materials)} materials")
         
         # Calculate total area and estimate square dimensions
@@ -268,45 +281,198 @@ class RunAtlas(Operator):
         
         logger.info(f"Target square size: ~{estimated_side}px, initial width limit: {width_limit}px")
         
-        placements, shelves, atlas_height, max_used_width = {}, [], 0, 0
+        # Skyline algorithm: maintain list of segments with (x, y, width)
+        # representing the "skyline" - the top edge of placed rectangles
+        skyline = [{'x': 0, 'y': 0, 'width': width_limit}]
+        placements = {}
+        max_height = 0
 
         for info in sorted_materials:
-            width, height, mat_idx = info['width'], info['height'], info['index']
-            placement = None
-
-            # Try to fit on existing shelf - find best fit shelf
-            best_shelf = None
+            rect_width, rect_height, mat_idx = info['width'], info['height'], info['index']
+            
+            # Find best position along skyline
+            best_pos = None
+            best_y = float('inf')
+            best_idx = -1
             best_waste = float('inf')
             
-            for shelf in shelves:
-                if height <= shelf['height'] and shelf['next_x'] + width <= width_limit:
-                    # Calculate wasted space (height difference)
-                    waste = shelf['height'] - height
-                    if waste < best_waste:
+            for i, segment in enumerate(skyline):
+                # Check if rectangle fits starting at this segment
+                can_fit, y_pos = self._can_fit_at_segment(skyline, i, rect_width, rect_height, width_limit)
+                
+                if can_fit:
+                    # Calculate waste (how much vertical space this creates)
+                    waste = y_pos - segment['y']
+                    
+                    # Prefer lower positions, then less waste
+                    if y_pos < best_y or (y_pos == best_y and waste < best_waste):
+                        best_pos = segment['x']
+                        best_y = y_pos
+                        best_idx = i
                         best_waste = waste
-                        best_shelf = shelf
             
-            if best_shelf is not None:
-                placement = {'x': best_shelf['next_x'], 'y': best_shelf['y'], 'width': width, 'height': height}
-                best_shelf['next_x'] += width
-                best_shelf['used_width'] = max(best_shelf['used_width'], best_shelf['next_x'])
-                max_used_width = max(max_used_width, best_shelf['next_x'])
-            else:
-                # Create new shelf if needed
-                placement = {'x': 0, 'y': atlas_height, 'width': width, 'height': height}
-                shelves.append({'y': atlas_height, 'height': height, 'next_x': width, 'used_width': width})
-                atlas_height += height
-                max_used_width = max(max_used_width, width)
-
+            if best_pos is None:
+                logger.error(f"Could not fit material {mat_idx} ({rect_width}x{rect_height})")
+                continue
+            
+            # Place the rectangle
+            placement = {'x': best_pos, 'y': best_y, 'width': rect_width, 'height': rect_height}
             placements[mat_idx] = placement
+            max_height = max(max_height, best_y + rect_height)
+            
+            # Update skyline
+            self._update_skyline(skyline, best_pos, best_y, rect_width, rect_height)
+            
+            logger.debug(f"Placed material {mat_idx}: ({best_pos}, {best_y}) size {rect_width}x{rect_height}")
         
-        atlas_width = next_power_of_2(max(max_used_width, 64))
-        atlas_height = next_power_of_2(max(atlas_height, 64))
-        efficiency = (total_area / (atlas_width * atlas_height) * 100) if atlas_width * atlas_height > 0 else 0
-        aspect_ratio = atlas_width / atlas_height if atlas_height > 0 else 1.0
-        logger.info(f"Atlas: {atlas_width}x{atlas_height} (aspect: {aspect_ratio:.2f}:1), efficiency: {efficiency:.1f}%")
+        atlas_width = next_power_of_2(max(width_limit, 64))
+        atlas_height = next_power_of_2(max(max_height, 64))
         
-        return {'width': atlas_width, 'height': atlas_height, 'placements': placements}
+        # Calculate efficiency
+        used_area = sum(info['width'] * info['height'] for info in material_info)
+        efficiency = (used_area / (atlas_width * atlas_height)) * 100
+        
+        logger.info(f"Atlas: {atlas_width}x{atlas_height}, Efficiency: {efficiency:.1f}%")
+        return {
+            'width': atlas_width,
+            'height': atlas_height,
+            'placements': placements,
+        }
+    
+    def _can_fit_at_segment(self, skyline, start_idx, width, height, width_limit):
+        """Check if a rectangle can fit at the given skyline segment
+        
+        Returns (can_fit, y_position) where y_position is the lowest Y where the rectangle top would be
+        """
+        segment = skyline[start_idx]
+        x = segment['x']
+        
+        # Check if rectangle would exceed width limit
+        if x + width > width_limit:
+            return False, 0
+        
+        # Find the maximum Y value across all segments this rectangle would span
+        max_y = segment['y']
+        current_x = x
+        
+        for i in range(start_idx, len(skyline)):
+            seg = skyline[i]
+            if current_x >= x + width:
+                break
+            
+            if seg['x'] < x + width:
+                max_y = max(max_y, seg['y'])
+                current_x = seg['x'] + seg['width']
+        
+        # Check if we have enough continuous width
+        if current_x < x + width:
+            return False, 0
+        
+        return True, max_y
+    
+    def _update_skyline(self, skyline, x, y, width, height):
+        """Update the skyline after placing a rectangle
+        
+        This removes/modifies segments covered by the new rectangle and adds a new segment on top
+        """
+        new_y = y + height
+        rect_right = x + width
+        
+        # Find segments that overlap with the placed rectangle
+        new_skyline = []
+        i = 0
+        
+        while i < len(skyline):
+            seg = skyline[i]
+            seg_right = seg['x'] + seg['width']
+            
+            # Segment is completely before the rectangle
+            if seg_right <= x:
+                new_skyline.append(seg)
+                i += 1
+                continue
+            
+            # Segment is completely after the rectangle
+            if seg['x'] >= rect_right:
+                new_skyline.append(seg)
+                i += 1
+                continue
+            
+            # Segment overlaps with rectangle
+            # Add left part if exists
+            if seg['x'] < x:
+                new_skyline.append({
+                    'x': seg['x'],
+                    'y': seg['y'],
+                    'width': x - seg['x']
+                })
+            
+            # Add right part if exists
+            if seg_right > rect_right:
+                new_skyline.append({
+                    'x': rect_right,
+                    'y': seg['y'],
+                    'width': seg_right - rect_right
+                })
+            
+            i += 1
+        
+        # Add the new segment on top of the placed rectangle
+        new_skyline.append({
+            'x': x,
+            'y': new_y,
+            'width': width
+        })
+        
+        # Sort by x position and merge adjacent segments with same height
+        new_skyline.sort(key=lambda s: s['x'])
+        
+        merged = []
+        for seg in new_skyline:
+            if merged and merged[-1]['y'] == seg['y'] and merged[-1]['x'] + merged[-1]['width'] == seg['x']:
+                # Merge with previous segment
+                merged[-1]['width'] += seg['width']
+            else:
+                merged.append(seg)
+        
+        skyline.clear()
+        skyline.extend(merged)
+    
+    def group_materials_manually(self, materials, settings):
+        """Group materials based on their manually assigned atlas_group values
+        
+        Returns a list of material groups, where each group is a list of materials.
+        Materials with atlas_group=0 are put into separate individual groups.
+        """
+        groups_dict = {}  # group_id -> list of materials
+        ungrouped = []  # Materials with group=0
+        
+        for mat in materials:
+            mat_setting = next((s for s in settings.material_bake_settings if s.material_name == mat.name), None)
+            
+            if mat_setting and mat_setting.atlas_group > 0:
+                group_id = mat_setting.atlas_group
+                if group_id not in groups_dict:
+                    groups_dict[group_id] = []
+                groups_dict[group_id].append(mat)
+                logger.info(f"Material '{mat.name}' assigned to group {group_id}")
+            else:
+                # Materials with no setting or group=0 go into individual groups
+                ungrouped.append(mat)
+                logger.info(f"Material '{mat.name}' not assigned to a group (will be in separate atlas)")
+        
+        # Build final list of groups
+        material_groups = []
+        
+        # Add assigned groups (sorted by group ID for consistency)
+        for group_id in sorted(groups_dict.keys()):
+            material_groups.append(groups_dict[group_id])
+        
+        # Add ungrouped materials as individual groups
+        for mat in ungrouped:
+            material_groups.append([mat])
+        
+        return material_groups
     
     def create_texture_atlas(self, context, joined_mesh, atlas_name):
         """Create texture atlas from all materials on mesh and update UVs"""
