@@ -1,6 +1,7 @@
 import bpy
 import math
 import os
+import numpy as np
 
 def is_in_bake_collection(obj):
     """Check if the object is in a bake collection (name starts with 'BAKE_')"""
@@ -447,3 +448,48 @@ def set_active_uv_layer(mesh, uv_layer_name):
     else:
         logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")
         return False
+    
+    
+def img_as_nparray(image):
+    """Convert Blender image to numpy array (H, W, 4)"""
+    pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixel_buffer)
+    return pixel_buffer.reshape(image.size[1], image.size[0], 4)
+
+
+def nparray_to_img(image, nparr):
+    """Write numpy array (H, W, 4) to Blender image"""
+    assert nparr.shape == (image.size[1], image.size[0], 4)
+    image.pixels.foreach_set(nparr.ravel())
+
+
+def find_texture_in_material(material, tex_type):
+    if not material.use_nodes:
+        return None
+    
+    # First try to find by name
+    for node in material.node_tree.nodes:
+        if node.type == 'TEX_IMAGE' and node.image:
+            node_name_lower = node.image.name.lower()
+            if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
+                return node.image
+    
+    # Then try to find by socket connections using config
+    atlas_config = get_atlas_config()
+    socket_mapping = atlas_config['socket_mapping']
+    links = material.node_tree.links
+    
+    if tex_type in socket_mapping:
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
+                return node.image
+    elif tex_type == 'normal':
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
+                return node.image
+    
+    return None

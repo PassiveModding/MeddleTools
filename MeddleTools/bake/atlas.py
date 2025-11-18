@@ -39,61 +39,8 @@ def get_atlas_label(context):
         else:
             return f"Atlas & Join ({num_materials} materials -> {num_groups} groups)"
 
-def img_as_nparray(image):
-    """Convert Blender image to numpy array (H, W, 4)"""
-    pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
-    image.pixels.foreach_get(pixel_buffer)
-    return pixel_buffer.reshape(image.size[1], image.size[0], 4)
-
-
-def nparray_to_img(image, nparr):
-    """Write numpy array (H, W, 4) to Blender image"""
-    assert nparr.shape == (image.size[1], image.size[0], 4)
-    image.pixels.foreach_set(nparr.ravel())
-
-
-def find_texture_in_material(material, tex_type):
-    """Find the appropriate texture image for a given texture type from material
-    
-    Args:
-        material: Blender material to search
-        tex_type: Type of texture to find ('diffuse', 'normal', 'roughness', 'alpha')
-    
-    Returns:
-        Image or None if not found
-    """
-    if not material.use_nodes:
-        return None
-    
-    # First try to find by name
-    for node in material.node_tree.nodes:
-        if node.type == 'TEX_IMAGE' and node.image:
-            node_name_lower = node.image.name.lower()
-            if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
-                return node.image
-    
-    # Then try to find by socket connections using config
-    atlas_config = bake_utils.get_atlas_config()
-    socket_mapping = atlas_config['socket_mapping']
-    links = material.node_tree.links
-    
-    if tex_type in socket_mapping:
-        for node in material.node_tree.nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
-                return node.image
-    elif tex_type == 'normal':
-        for node in material.node_tree.nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
-                return node.image
-    
-    return None
-
 def is_valid_bake_material(mat):
-    """Check if material is valid for baking (i.e. only contains compatible nodes)"""
+    """Check if material is valid for atlasing (i.e. only contains compatible nodes)"""
     if not mat.use_nodes:
         return False
     
@@ -111,8 +58,6 @@ class RunAtlas(Operator):
     bl_description = "Join meshes and create texture atlases to reduce material count (1 material per mesh), assign using the G input in material settings"
     bl_options = {'REGISTER', 'UNDO'}
 
-        
-    
     @classmethod
     def poll(cls, context):
         mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
@@ -230,7 +175,7 @@ class RunAtlas(Operator):
             
             if material.use_nodes:
                 # Find all textures and determine size
-                texture_types_found = {t: find_texture_in_material(material, t) for t in texture_types}
+                texture_types_found = {t: bake_utils.find_texture_in_material(material, t) for t in texture_types}
                 
                 for image in texture_types_found.values():
                     if image and image.has_data:
@@ -251,13 +196,7 @@ class RunAtlas(Operator):
         return material_info
     
     def calculate_atlas_layout(self, material_info):
-        """Calculate efficient atlas layout using improved skyline packing algorithm
-        
-        This algorithm maintains a skyline contour and places rectangles in the lowest 
-        available position, allowing better 2D space utilization.
-
-        Returns width, height, placements, and packing metrics including efficiency and waste.
-        """
+        """Calculate atlas layout using skyline packing algorithm"""
         sorted_materials = sorted(material_info, key=lambda x: max(x['width'], x['height']), reverse=True)
         logger.info(f"Packing {len(sorted_materials)} materials")
         
@@ -298,7 +237,7 @@ class RunAtlas(Operator):
             
             for i, segment in enumerate(skyline):
                 # Check if rectangle fits starting at this segment
-                can_fit, y_pos = self._can_fit_at_segment(skyline, i, rect_width, rect_height, width_limit)
+                can_fit, y_pos = self.can_fit_at_segment(skyline, i, rect_width, rect_height, width_limit)
                 
                 if can_fit:
                     # Calculate waste (how much vertical space this creates)
@@ -321,7 +260,7 @@ class RunAtlas(Operator):
             max_height = max(max_height, best_y + rect_height)
             
             # Update skyline
-            self._update_skyline(skyline, best_pos, best_y, rect_width, rect_height)
+            self.update_skyline(skyline, best_pos, best_y, rect_width, rect_height)
             
             logger.debug(f"Placed material {mat_idx}: ({best_pos}, {best_y}) size {rect_width}x{rect_height}")
         
@@ -339,7 +278,7 @@ class RunAtlas(Operator):
             'placements': placements,
         }
     
-    def _can_fit_at_segment(self, skyline, start_idx, width, height, width_limit):
+    def can_fit_at_segment(self, skyline, start_idx, width, height, width_limit):
         """Check if a rectangle can fit at the given skyline segment
         
         Returns (can_fit, y_position) where y_position is the lowest Y where the rectangle top would be
@@ -370,7 +309,7 @@ class RunAtlas(Operator):
         
         return True, max_y
     
-    def _update_skyline(self, skyline, x, y, width, height):
+    def update_skyline(self, skyline, x, y, width, height):
         """Update the skyline after placing a rectangle
         
         This removes/modifies segments covered by the new rectangle and adds a new segment on top
@@ -547,7 +486,7 @@ class RunAtlas(Operator):
             rgba = np.zeros((atlas_height, atlas_width, 4), dtype=np.float32)
             rgba[:, :] = default_color
             
-            nparray_to_img(atlas_image, rgba)
+            bake_utils.nparray_to_img(atlas_image, rgba)
             atlas_images[tex_type] = atlas_image
         
         return atlas_images
@@ -559,7 +498,7 @@ class RunAtlas(Operator):
         placements = atlas_layout['placements']
         atlas_width = atlas_layout['width']
         atlas_height = atlas_layout['height']
-        atlas_buffers = {tex_type: img_as_nparray(image) for tex_type, image in atlas_images.items()}
+        atlas_buffers = {tex_type: bake_utils.img_as_nparray(image) for tex_type, image in atlas_images.items()}
 
         for mat_idx, material in enumerate(materials):
             placement = placements.get(mat_idx)
@@ -586,10 +525,10 @@ class RunAtlas(Operator):
             material_uv_mapping[mat_idx] = (u_offset, v_offset, u_scale, v_scale)
 
             logger.info(f"Material {mat_idx} ({material.name}) -> pos ({tile_x}, {tile_y}) size ({tile_w}x{tile_h})")
-            alpha_source = find_texture_in_material(material, 'alpha')
+            alpha_source = bake_utils.find_texture_in_material(material, 'alpha')
 
             for tex_type in texture_types:
-                source_image = find_texture_in_material(material, tex_type)
+                source_image = bake_utils.find_texture_in_material(material, tex_type)
                 
                 if not source_image or not source_image.has_data:
                     logger.debug(f"No {tex_type} texture found for material '{material.name}'")
@@ -613,7 +552,7 @@ class RunAtlas(Operator):
                     logger.exception(f"Failed copying {tex_type} for material '{material.name}': {e}")
         
         for tex_type, pixels in atlas_buffers.items():
-            nparray_to_img(atlas_images[tex_type], pixels)
+            bake_utils.nparray_to_img(atlas_images[tex_type], pixels)
 
         return material_uv_mapping
     
@@ -670,7 +609,7 @@ class RunAtlas(Operator):
         atlas_height, atlas_width = atlas_pixels.shape[:2]
 
         # Get full source texture
-        source_pixels = img_as_nparray(source_image)
+        source_pixels = bake_utils.img_as_nparray(source_image)
         
         # Handle special texture type processing
         if tex_type == 'alpha':
@@ -678,7 +617,7 @@ class RunAtlas(Operator):
             source_pixels = np.concatenate([alpha_channel] * 3 + [np.ones_like(alpha_channel)], axis=2)
         elif tex_type == 'diffuse' and alpha_image:
             logger.info(f"Packing alpha channel into diffuse texture")
-            alpha_pixels = img_as_nparray(alpha_image)
+            alpha_pixels = bake_utils.img_as_nparray(alpha_image)
             
             if alpha_pixels.shape[:2] != source_pixels.shape[:2]:
                 alpha_pixels = self.bilinear_resize(alpha_pixels, source_width, source_height, alpha_image.size[0], alpha_image.size[1])
