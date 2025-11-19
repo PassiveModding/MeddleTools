@@ -182,7 +182,7 @@ class RunBake(Operator):
         original_nodes.remove(material_output_node)
         
         # Get bake material configuration
-        bake_config = bake_utils.get_bake_material_config()
+        bake_config = bake_utils.get_bake_material_config(context)
         
         def createBakeBsdfNode():
             # duplicate the principled node for baking
@@ -214,9 +214,15 @@ class RunBake(Operator):
         # Create baked BSDF node
         duplicate_node = createBakeBsdfNode()
         
-        # Create special nodes (like normal map)
+        # Create special nodes (like normal map, ior math) based on config requirements
         special_nodes = {'bsdf': duplicate_node, 'output': material_output_node}
+        bake_passes = bake_config['bake_passes']
+        
         for node_key, node_config in bake_config['special_nodes'].items():
+            # Check if this node requires a specific pass to be enabled
+            if 'requires_pass' in node_config and node_config['requires_pass'] not in bake_passes:
+                continue
+                
             node = material.node_tree.nodes.new(node_config['type'])
             location_offset = node_config['location_offset']
             node.location = (duplicate_node.location.x + location_offset[0], 

@@ -64,7 +64,7 @@ def get_all_selected_meshes(context):
     
     return selected_meshes
 
-def get_uv_islands(mesh, full_island_detection=False):
+def get_uv_islands(mesh):
     visited = set()
     islands = []
     
@@ -89,27 +89,7 @@ def get_uv_islands(mesh, full_island_detection=False):
                 adjacency[next_li].append(li)
         return adjacency
     
-    def build_uv_adjacency_full():
-        # Map UV coordinates to loop indices
-        uv_to_loops = {}
-        for loop_index, uv in enumerate(uv_layer.data):
-            uv_coord = (round(uv.uv.x, 6), round(uv.uv.y, 6))  # Round to handle float precision
-            if uv_coord not in uv_to_loops:
-                uv_to_loops[uv_coord] = []
-            uv_to_loops[uv_coord].append(loop_index)
-        
-        # Build adjacency based on shared UV coordinates
-        adjacency = {}
-        for loops in uv_to_loops.values():
-            for li in loops:
-                if li not in adjacency:
-                    adjacency[li] = []
-                # Connect all loops that share this UV coordinate
-                adjacency[li].extend([other_li for other_li in loops if other_li != li])
-        
-        return adjacency
-    
-    adjacency = build_uv_adjacency_full() if full_island_detection else build_uv_adjacency()
+    adjacency = build_uv_adjacency()
     
     def get_connected_loops(start_loop_index):
         to_visit = [start_loop_index]
@@ -143,19 +123,6 @@ def calculate_bake_margin(image_size):
     return max(4, int(math.ceil(0.0078125 * max(image_size))))
 
 def create_bake_image(name, width, height, background_color=(0.0, 0.0, 0.0, 1.0), alpha_mode='STRAIGHT', colorspace='sRGB'):
-    """Create a new image for baking with proper settings
-    
-    Args:
-        name: Name of the image
-        width: Width in pixels
-        height: Height in pixels
-        background_color: RGBA tuple for background color
-        alpha_mode: 'STRAIGHT', 'CHANNEL_PACKED', or 'NONE'
-        colorspace: 'sRGB' or 'Non-Color'
-    
-    Returns:
-        The created image
-    """
     # Remove existing image with same name
     if name in bpy.data.images:
         bpy.data.images.remove(bpy.data.images[name])
@@ -302,15 +269,41 @@ def get_bake_pass_config(pass_name):
     
     return configs.get(pass_name.lower(), None)
 
-def get_bake_material_config() -> dict:
+def get_bake_material_config(context=None) -> dict:
     """Get configuration for baking materials
+    
+    Args:
+        context: Blender context (optional) - if provided, filters passes based on user settings
     
     Returns:
         Dictionary with bake passes and material setup configuration
     """
+    # All available bake passes
+    all_passes = ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission']
+    
+    # Filter passes based on user settings if context is provided
+    if context:
+        settings = context.scene.meddle_settings
+        enabled_passes = []
+        if settings.bake_diffuse:
+            enabled_passes.append('diffuse')
+        if settings.bake_normal:
+            enabled_passes.append('normal')
+        if settings.bake_roughness:
+            enabled_passes.append('roughness')
+        if settings.bake_metalness:
+            enabled_passes.append('metalness')
+        if settings.bake_ior:
+            enabled_passes.append('ior')
+        if settings.bake_emission:
+            enabled_passes.append('emission')
+        bake_passes = enabled_passes
+    else:
+        bake_passes = all_passes
+    
     return {
         # Bake passes to execute in order
-        'bake_passes': ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission'],
+        'bake_passes': bake_passes,
         
         # Material node connections after baking
         # Format: (from_node_key, from_output, to_node_key, to_input)
@@ -332,13 +325,15 @@ def get_bake_material_config() -> dict:
         'special_nodes': {
             'normal_map': {
                 'type': 'ShaderNodeNormalMap',
-                'location_offset': (-300, -200)  # Relative to bsdf node
+                'location_offset': (-300, -200),  # Relative to bsdf node
+                'requires_pass': 'normal'  # Only create if this pass is enabled
             },
             'ior_math': {
                 'type': 'ShaderNodeMath',
                 'location_offset': (-300, -700),  # Relative to bsdf node
                 'operation': 'ADD',
-                'inputs': {1: 1.0}  # Add 1.0 to remap 0-1 back to 1-2
+                'inputs': {1: 1.0},  # Add 1.0 to remap 0-1 back to 1-2
+                'requires_pass': 'ior'  # Only create if this pass is enabled
             }
         },
 
@@ -353,16 +348,41 @@ def get_bake_material_config() -> dict:
         }
     }
 
-def get_atlas_config() -> dict:
+def get_atlas_config(context=None) -> dict:
     """Get configuration for atlas creation
+    
+    Args:
+        context: Blender context (optional) - if provided, filters texture types based on user settings
     
     Returns:
         Dictionary with texture_types, socket_mapping, material setup and other atlas settings
     """
+    # All available texture types
+    all_texture_types = ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission']
+    
+    # Filter texture types based on user settings if context is provided
+    if context:
+        settings = context.scene.meddle_settings
+        enabled_types = []
+        if settings.bake_diffuse:
+            enabled_types.append('diffuse')
+        if settings.bake_normal:
+            enabled_types.append('normal')
+        if settings.bake_roughness:
+            enabled_types.append('roughness')
+        if settings.bake_metalness:
+            enabled_types.append('metalness')
+        if settings.bake_ior:
+            enabled_types.append('ior')
+        if settings.bake_emission:
+            enabled_types.append('emission')
+        texture_types = enabled_types
+    else:
+        texture_types = all_texture_types
+    
     return {
-        'texture_types': ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission'],
-        'pack_alpha': True,  # Whether to pack alpha channel into diffuse texture
-        
+        'texture_types': texture_types,
+
         # Socket mapping for finding textures by connection
         'socket_mapping': {
             'diffuse': 'Base Color',
@@ -403,19 +423,21 @@ def get_atlas_config() -> dict:
         'special_nodes': {
             'normal_map': {
                 'type': 'ShaderNodeNormalMap',
-                'location': (-100, -100)
+                'location': (-100, -100),
+                'requires_texture': 'normal'  # Only create if this texture type is available
             },
             'ior_math': {
                 'type': 'ShaderNodeMath',
                 'location': (-100, -700),
                 'operation': 'ADD',
-                'inputs': {1: 1.0}  # Add 1.0 to remap 0-1 back to 1-2
+                'inputs': {1: 1.0},  # Add 1.0 to remap 0-1 back to 1-2
+                'requires_texture': 'ior'  # Only create if this texture type is available
             },
             'bsdf': {
                 'type': 'ShaderNodeBsdfPrincipled',
                 'location': (0, 0),
                 'inputs': {
-                    'IOR': 1.0,
+                    'IOR': 1.2,
                     'Metallic': 0.0
                 }
             },

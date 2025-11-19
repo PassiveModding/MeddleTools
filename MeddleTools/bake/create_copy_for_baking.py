@@ -1,3 +1,4 @@
+from enum import unique
 import bpy
 import logging
 from bpy.types import Operator
@@ -14,13 +15,19 @@ def get_create_copy_label(context):
     """Get dynamic label for CreateCopyForBaking operator based on selection"""
     mesh_objects = bake_utils.get_all_selected_meshes(context)
     mesh_count = len(mesh_objects)
+    unique_materials = set()
+    for mesh in mesh_objects:
+        for mat in mesh.data.materials:
+            if mat:
+                unique_materials.add(mat.name)
+    # Should reduce down the the unique material count (assuming each mesh has one material)
     
     if mesh_count == 0:
         return "Create Copy for Baking (No meshes selected)"
     elif mesh_count == 1:
         return "Create Copy for Baking (1 mesh)"
     else:
-        return f"Create Copy for Baking ({mesh_count} meshes)"
+        return f"Create Copy for Baking ({mesh_count} meshes -> {len(unique_materials)})"
 
 
 class CreateCopyForBaking(Operator):

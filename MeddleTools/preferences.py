@@ -84,6 +84,43 @@ class MeddleSettings(bpy.types.PropertyGroup):
         max=4096
     )
     
+    # Bake channel toggles
+    bake_diffuse: bpy.props.BoolProperty(
+        name="Diffuse",
+        description="Bake diffuse/base color channel",
+        default=True
+    )
+    
+    bake_normal: bpy.props.BoolProperty(
+        name="Normal",
+        description="Bake normal map channel",
+        default=True
+    )
+    
+    bake_roughness: bpy.props.BoolProperty(
+        name="Roughness",
+        description="Bake roughness channel",
+        default=True
+    )
+    
+    bake_metalness: bpy.props.BoolProperty(
+        name="Metalness",
+        description="Bake metalness channel",
+        default=True
+    )
+    
+    bake_ior: bpy.props.BoolProperty(
+        name="IOR",
+        description="Bake IOR (Index of Refraction) channel",
+        default=True
+    )
+    
+    bake_emission: bpy.props.BoolProperty(
+        name="Emission",
+        description="Bake emission channel",
+        default=True
+    )
+    
     material_bake_settings: bpy.props.CollectionProperty(
         type=MaterialBakeSettings,
         name="Material Bake Settings",

@@ -427,7 +427,7 @@ class RunAtlas(Operator):
         self.report({'INFO'}, f"Creating atlas from {num_materials} material(s)...")
         
         # Get atlas configuration
-        atlas_config = bake_utils.get_atlas_config()
+        atlas_config = bake_utils.get_atlas_config(context)
         texture_types = atlas_config['texture_types']
         logger.info(f"Atlas texture types: {texture_types}")
         
@@ -443,7 +443,7 @@ class RunAtlas(Operator):
         material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types)
         
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
-        atlas_material = self.create_atlas_material(atlas_name, atlas_images)
+        atlas_material = self.create_atlas_material(context, atlas_name, atlas_images)
         
         joined_mesh.data.materials.clear()
         joined_mesh.data.materials.append(atlas_material)
@@ -556,7 +556,7 @@ class RunAtlas(Operator):
 
         return material_uv_mapping
     
-    def create_atlas_material(self, atlas_name, atlas_images):
+    def create_atlas_material(self, context, atlas_name, atlas_images):
         """Create material with atlas textures"""
         atlas_material = bpy.data.materials.new(name=atlas_name)
         atlas_material.use_nodes = True
@@ -566,23 +566,31 @@ class RunAtlas(Operator):
         nodes.clear()
         
         # Get atlas configuration
-        atlas_config = bake_utils.get_atlas_config()
+        atlas_config = bake_utils.get_atlas_config(context)
         texture_configs = atlas_config['texture_node_configs']
         special_nodes_config = atlas_config['special_nodes']
         connections = atlas_config['node_connections']
         
-        # Create texture nodes
+        # Create texture nodes only for available textures
         texture_nodes = {}
         for tex_type, location, label in texture_configs:
-            tex_node = nodes.new('ShaderNodeTexImage')
-            tex_node.image = atlas_images[tex_type]
-            tex_node.location = location
-            tex_node.label = label
-            texture_nodes[tex_type] = tex_node
+            if tex_type in atlas_images:
+                tex_node = nodes.new('ShaderNodeTexImage')
+                tex_node.image = atlas_images[tex_type]
+                tex_node.location = location
+                tex_node.label = label
+                texture_nodes[tex_type] = tex_node
         
-        # Create special nodes (normal_map, bsdf, output)
+        # Create special nodes (normal_map, ior_math, bsdf, output)
+        # Only create nodes that are needed based on available textures
         special_nodes = {}
+        texture_types = atlas_config['texture_types']
+        
         for node_key, config in special_nodes_config.items():
+            # Check if this node requires a specific texture type to be available
+            if 'requires_texture' in config and config['requires_texture'] not in texture_types:
+                continue
+                
             node = nodes.new(config['type'])
             node.location = config['location']
             special_nodes[node_key] = node
@@ -595,8 +603,10 @@ class RunAtlas(Operator):
         # Combine all nodes for connection lookups
         all_nodes = {**texture_nodes, **special_nodes}
         
-        # Create connections based on config
+        # Create connections based on config, skipping missing nodes
         for from_key, from_output, to_key, to_input in connections:
+            if from_key not in all_nodes or to_key not in all_nodes:
+                continue
             from_node = all_nodes[from_key]
             to_node = all_nodes[to_key]
             links.new(from_node.outputs[from_output], to_node.inputs[to_input])

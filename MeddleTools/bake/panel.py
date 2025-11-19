@@ -2,8 +2,6 @@ import bpy
 from .bake import RunBake, get_bake_label
 from .atlas import RunAtlas, get_atlas_label
 from .export_fbx import ExportFBX
-from .reproject_retile import ReprojectRetile, get_reproject_retile_label
-from .reproject_rebake import ReprojectRebake
 from .create_copy_for_baking import CreateCopyForBaking, get_create_copy_label
 from .create_uv_bake_layers import CreateUVBakeLayers, get_create_uv_label
 from .join_meshes import JoinMeshes, get_join_label
@@ -192,6 +190,20 @@ class MeddleBakePanel(bpy.types.Panel):
         # box.prop(settings, "bake_samples")
         # box.operator(RunBake.bl_idname, text=get_bake_label(context)) 
         # want to show bake samples and button side by side
+        box.separator()
+        
+        # Bake channel selection
+        channel_box = box.box()
+        channel_box.label(text="Bake Channels", icon='NODE')
+        row = channel_box.row(align=True)
+        row.prop(settings, "bake_diffuse", text="Diffuse", toggle=True)
+        row.prop(settings, "bake_normal", text="Normal", toggle=True)
+        row.prop(settings, "bake_roughness", text="Rough", toggle=True)
+        row = channel_box.row(align=True)
+        row.prop(settings, "bake_metalness", text="Metal", toggle=True)
+        row.prop(settings, "bake_ior", text="IOR", toggle=True)
+        row.prop(settings, "bake_emission", text="Emission", toggle=True)
+        
         box.separator()
         row = box.row(align=True)
         row.operator(RunBake.bl_idname, text=get_bake_label(context))
