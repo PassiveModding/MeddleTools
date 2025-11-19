@@ -3,6 +3,44 @@ import math
 import os
 import numpy as np
 
+def create_subtract_one_transform(material, from_socket, to_socket, location):
+    """Create a math node that subtracts 1.0 from input (for IOR remapping)"""
+    math_node = material.node_tree.nodes.new('ShaderNodeMath')
+    math_node.operation = 'SUBTRACT'
+    math_node.inputs[1].default_value = 1.0
+    math_node.location = location
+    material.node_tree.links.new(from_socket, math_node.inputs[0])
+    material.node_tree.links.new(math_node.outputs[0], to_socket)
+    return math_node
+
+def create_normal_map_node(material, location):
+    """Create a normal map node for tangent space normals"""
+    node = material.node_tree.nodes.new('ShaderNodeNormalMap')
+    node.location = location
+    return node
+
+def create_ior_add_node(material, location):
+    """Create a math node that adds 1.0 to remap 0-1 back to 1-2 range"""
+    node = material.node_tree.nodes.new('ShaderNodeMath')
+    node.operation = 'ADD'
+    node.inputs[1].default_value = 1.0
+    node.location = location
+    return node
+
+def create_bsdf_node(material, location):
+    """Create a Principled BSDF node with default values for atlas"""
+    node = material.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
+    node.location = location
+    node.inputs['IOR'].default_value = 1.2
+    node.inputs['Metallic'].default_value = 0.0
+    return node
+
+def create_output_node(material, location):
+    """Create a Material Output node"""
+    node = material.node_tree.nodes.new('ShaderNodeOutputMaterial')
+    node.location = location
+    return node
+
 def is_in_bake_collection(obj):
     """Check if the object is in a bake collection (name starts with 'BAKE_')"""
     for collection in obj.users_collection:
@@ -246,7 +284,9 @@ def get_bake_pass_config(pass_name):
             'required_inputs': ['Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color',
-            'custom_mapping': 'EmissionStrength'
+            'bake_connections': [
+                ('Metallic', 'Emission Strength', None)
+            ]
         },
         'ior': {
             'bake_type': 'EMIT',
@@ -255,7 +295,9 @@ def get_bake_pass_config(pass_name):
             'required_inputs': ['IOR'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color',
-            'custom_mapping': 'IORToEmissionStrength'
+            'bake_connections': [
+                ('IOR', 'Emission Strength', create_subtract_one_transform)
+            ]
         },
         'emission': {
             'bake_type': 'EMIT',
@@ -322,20 +364,11 @@ def get_bake_material_config(context=None) -> dict:
         ],
         
         # Special nodes needed for baked material
-        'special_nodes': {
-            'normal_map': {
-                'type': 'ShaderNodeNormalMap',
-                'location_offset': (-300, -200),  # Relative to bsdf node
-                'requires_pass': 'normal'  # Only create if this pass is enabled
-            },
-            'ior_math': {
-                'type': 'ShaderNodeMath',
-                'location_offset': (-300, -700),  # Relative to bsdf node
-                'operation': 'ADD',
-                'inputs': {1: 1.0},  # Add 1.0 to remap 0-1 back to 1-2
-                'requires_pass': 'ior'  # Only create if this pass is enabled
-            }
-        },
+        # Format: (node_key, factory_function, location_offset, requires_pass)
+        'special_nodes': [
+            ('normal_map', create_normal_map_node, (-300, -200), 'normal'),
+            ('ior_math', create_ior_add_node, (-300, -700), 'ior')
+        ],
 
         # BSDF node default inputs
         'bsdf_defaults': {
@@ -420,32 +453,13 @@ def get_atlas_config(context=None) -> dict:
         ],
         
         # Special node setup
-        'special_nodes': {
-            'normal_map': {
-                'type': 'ShaderNodeNormalMap',
-                'location': (-100, -100),
-                'requires_texture': 'normal'  # Only create if this texture type is available
-            },
-            'ior_math': {
-                'type': 'ShaderNodeMath',
-                'location': (-100, -700),
-                'operation': 'ADD',
-                'inputs': {1: 1.0},  # Add 1.0 to remap 0-1 back to 1-2
-                'requires_texture': 'ior'  # Only create if this texture type is available
-            },
-            'bsdf': {
-                'type': 'ShaderNodeBsdfPrincipled',
-                'location': (0, 0),
-                'inputs': {
-                    'IOR': 1.2,
-                    'Metallic': 0.0
-                }
-            },
-            'output': {
-                'type': 'ShaderNodeOutputMaterial',
-                'location': (400, 0)
-            }
-        }
+        # Format: (node_key, factory_function, location, requires_texture)
+        'special_nodes': [
+            ('normal_map', create_normal_map_node, (-100, -100), 'normal'),
+            ('ior_math', create_ior_add_node, (-100, -700), 'ior'),
+            ('bsdf', create_bsdf_node, (0, 0), None),
+            ('output', create_output_node, (400, 0), None)
+        ]
     }
 
 def set_active_uv_layer(mesh, uv_layer_name):

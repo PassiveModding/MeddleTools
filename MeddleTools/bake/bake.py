@@ -218,25 +218,14 @@ class RunBake(Operator):
         special_nodes = {'bsdf': duplicate_node, 'output': material_output_node}
         bake_passes = bake_config['bake_passes']
         
-        for node_key, node_config in bake_config['special_nodes'].items():
+        for node_key, factory_func, location_offset, requires_pass in bake_config['special_nodes']:
             # Check if this node requires a specific pass to be enabled
-            if 'requires_pass' in node_config and node_config['requires_pass'] not in bake_passes:
+            if requires_pass and requires_pass not in bake_passes:
                 continue
-                
-            node = material.node_tree.nodes.new(node_config['type'])
-            location_offset = node_config['location_offset']
-            node.location = (duplicate_node.location.x + location_offset[0], 
-                           duplicate_node.location.y + location_offset[1])
             
-            # Set node operation if specified (for math nodes)
-            if 'operation' in node_config:
-                node.operation = node_config['operation']
-            
-            # Set node inputs if specified
-            if 'inputs' in node_config:
-                for input_index, value in node_config['inputs'].items():
-                    node.inputs[input_index].default_value = value
-            
+            location = (duplicate_node.location.x + location_offset[0], 
+                       duplicate_node.location.y + location_offset[1])
+            node = factory_func(material, location)
             special_nodes[node_key] = node
         
         # Connect nodes according to config
@@ -321,14 +310,16 @@ class RunBake(Operator):
                                 'input_name': input_socket.name
                             })
         
-        # Check if this pass requires remapping to Emission
-        remap_target_socket_name = None
-        ior_to_emission = False
-        if pass_config.get('custom_mapping') == 'EmissionStrength':
-            remap_target_socket_name = 'Emission Strength'
-        elif pass_config.get('custom_mapping') == 'IORToEmissionStrength':
-            remap_target_socket_name = 'Emission Strength'
-            ior_to_emission = True
+        # Get bake connections config (for socket remapping)
+        bake_connections = pass_config.get('bake_connections', [])
+        
+        # Build a mapping of source->target sockets and transforms
+        connection_map = {}
+        for conn in bake_connections:
+            source_socket = conn[0]
+            target_socket = conn[1]
+            transform_func = conn[2]
+            connection_map[source_socket] = (target_socket, transform_func)
         
         # Now disconnect everything and reconnect only what's needed for baking
         for node in material.node_tree.nodes:
@@ -341,26 +332,24 @@ class RunBake(Operator):
                 # Reconnect only the required inputs for this bake pass
                 for conn in original_connections:
                     if conn['input_name'] in required_inputs:
-                        if remap_target_socket_name:
-                            # Remap to emission for special passes
-                            target_socket = node.inputs.get(remap_target_socket_name)
+                        # Check if this input has a remapping
+                        if conn['input_name'] in connection_map:
+                            target_socket_name, transform_func = connection_map[conn['input_name']]
+                            target_socket = node.inputs.get(target_socket_name)
+                            
                             if target_socket:
-                                if ior_to_emission:
-                                    # Create a Math node to remap IOR to Emission Strength
-                                    math_node = material.node_tree.nodes.new('ShaderNodeMath')
-                                    math_node.operation = 'SUBTRACT'
-                                    math_node.inputs[1].default_value = 1.0
-                                    math_node.location = (conn['from_node'].location.x + 200, conn['from_node'].location.y)
-                                    
-                                    material.node_tree.links.new(conn['from_socket'], math_node.inputs[0])
-                                    material.node_tree.links.new(math_node.outputs[0], target_socket)
-                                    temp_nodes.append(math_node)
-                                    logger.info(f"Remapped {conn['input_name']} to {remap_target_socket_name} via Math node for {bake_name} bake")
+                                if transform_func:
+                                    # Call transform function to create and link nodes
+                                    location = (conn['from_node'].location.x + 200, conn['from_node'].location.y)
+                                    transform_node = transform_func(material, conn['from_socket'], target_socket, location)
+                                    temp_nodes.append(transform_node)
+                                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} via transform for {bake_name} bake")
                                 else:
+                                    # Direct connection
                                     material.node_tree.links.new(conn['from_socket'], target_socket)
-                                    logger.info(f"Remapped {conn['input_name']} to {remap_target_socket_name} for {bake_name} bake")
+                                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} for {bake_name} bake")
                         else:
-                            # Normal connection for standard bake passes
+                            # Normal connection - no remapping
                             material.node_tree.links.new(conn['from_socket'], conn['input_socket'])         
         
         # ensure image is active

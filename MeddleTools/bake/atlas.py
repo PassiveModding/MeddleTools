@@ -586,19 +586,13 @@ class RunAtlas(Operator):
         special_nodes = {}
         texture_types = atlas_config['texture_types']
         
-        for node_key, config in special_nodes_config.items():
+        for node_key, factory_func, location, requires_texture in special_nodes_config:
             # Check if this node requires a specific texture type to be available
-            if 'requires_texture' in config and config['requires_texture'] not in texture_types:
+            if requires_texture and requires_texture not in texture_types:
                 continue
-                
-            node = nodes.new(config['type'])
-            node.location = config['location']
-            special_nodes[node_key] = node
             
-            # Set input values if specified
-            if 'inputs' in config:
-                for input_name, value in config['inputs'].items():
-                    node.inputs[input_name].default_value = value
+            node = factory_func(atlas_material, location)
+            special_nodes[node_key] = node
         
         # Combine all nodes for connection lookups
         all_nodes = {**texture_nodes, **special_nodes}
