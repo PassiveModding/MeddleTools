@@ -1,6 +1,80 @@
 import bpy
 import math
 import os
+import numpy as np
+
+def create_subtract_one_transform(material, from_socket, to_socket, location):
+    """Create a math node that subtracts 1.0 from input (for IOR remapping)"""
+    math_node = material.node_tree.nodes.new('ShaderNodeMath')
+    math_node.operation = 'SUBTRACT'
+    math_node.inputs[1].default_value = 1.0
+    math_node.location = location
+    material.node_tree.links.new(from_socket, math_node.inputs[0])
+    material.node_tree.links.new(math_node.outputs[0], to_socket)
+    return math_node
+
+def create_normal_map_node(material, location):
+    """Create a normal map node for tangent space normals"""
+    node = material.node_tree.nodes.new('ShaderNodeNormalMap')
+    node.location = location
+    return node
+
+def create_ior_add_node(material, location):
+    """Create a math node that adds 1.0 to remap 0-1 back to 1-2 range"""
+    node = material.node_tree.nodes.new('ShaderNodeMath')
+    node.operation = 'ADD'
+    node.inputs[1].default_value = 1.0
+    node.location = location
+    return node
+
+def create_bsdf_node(material, location):
+    """Create a Principled BSDF node with default values for atlas"""
+    node = material.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
+    node.location = location
+    node.inputs['IOR'].default_value = 1.2
+    node.inputs['Metallic'].default_value = 0.0
+    return node
+
+def create_output_node(material, location):
+    """Create a Material Output node"""
+    node = material.node_tree.nodes.new('ShaderNodeOutputMaterial')
+    node.location = location
+    return node
+
+def is_in_bake_collection(obj):
+    """Check if the object is in a bake collection (name starts with 'BAKE_')"""
+    for collection in obj.users_collection:
+        if collection.name.startswith("BAKE_"):
+            return True
+    return False
+
+def get_mat_settings_by_name(settings, material_name):
+    """Get material bake settings by material name"""
+    for mat_setting in settings.material_bake_settings:
+        if mat_setting.material_name == material_name:
+            return mat_setting
+    return None
+
+def determine_largest_image_size(material):
+    """Determine the largest image size used in a material's texture nodes"""
+    if not material or not material.use_nodes:
+        return (2048, 2048)
+    
+    max_width = 0
+    max_height = 0
+    for node in material.node_tree.nodes:
+        # skip _array images
+        if node.type == 'TEX_IMAGE' and node.image and "_array" not in node.image.name:
+            max_width = max(max_width, node.image.size[0])
+            max_height = max(max_height, node.image.size[1])
+    
+    if max_width == 0 or max_height == 0:
+        max_width = 1024
+        max_height = 1024
+        
+    max_dimension = max(max_width, max_height)
+    
+    return (max_dimension, max_dimension) # want to keep square sizes for baking
 
 def require_mesh_or_armature_selected(context):
     """Check if operation can be executed"""
@@ -28,7 +102,7 @@ def get_all_selected_meshes(context):
     
     return selected_meshes
 
-def get_uv_islands(mesh, full_island_detection=False):
+def get_uv_islands(mesh):
     visited = set()
     islands = []
     
@@ -53,27 +127,7 @@ def get_uv_islands(mesh, full_island_detection=False):
                 adjacency[next_li].append(li)
         return adjacency
     
-    def build_uv_adjacency_full():
-        # Map UV coordinates to loop indices
-        uv_to_loops = {}
-        for loop_index, uv in enumerate(uv_layer.data):
-            uv_coord = (round(uv.uv.x, 6), round(uv.uv.y, 6))  # Round to handle float precision
-            if uv_coord not in uv_to_loops:
-                uv_to_loops[uv_coord] = []
-            uv_to_loops[uv_coord].append(loop_index)
-        
-        # Build adjacency based on shared UV coordinates
-        adjacency = {}
-        for loops in uv_to_loops.values():
-            for li in loops:
-                if li not in adjacency:
-                    adjacency[li] = []
-                # Connect all loops that share this UV coordinate
-                adjacency[li].extend([other_li for other_li in loops if other_li != li])
-        
-        return adjacency
-    
-    adjacency = build_uv_adjacency_full() if full_island_detection else build_uv_adjacency()
+    adjacency = build_uv_adjacency()
     
     def get_connected_loops(start_loop_index):
         to_visit = [start_loop_index]
@@ -103,22 +157,10 @@ def get_uv_islands(mesh, full_island_detection=False):
 
 def calculate_bake_margin(image_size):
     """Calculate bake margin based on image size (0.78125% of max dimension)"""
-    return int(math.ceil(0.0078125 * max(image_size)))
+    # min size of 4 pixels
+    return max(4, int(math.ceil(0.0078125 * max(image_size))))
 
 def create_bake_image(name, width, height, background_color=(0.0, 0.0, 0.0, 1.0), alpha_mode='STRAIGHT', colorspace='sRGB'):
-    """Create a new image for baking with proper settings
-    
-    Args:
-        name: Name of the image
-        width: Width in pixels
-        height: Height in pixels
-        background_color: RGBA tuple for background color
-        alpha_mode: 'STRAIGHT', 'CHANNEL_PACKED', or 'NONE'
-        colorspace: 'sRGB' or 'Non-Color'
-    
-    Returns:
-        The created image
-    """
     # Remove existing image with same name
     if name in bpy.data.images:
         bpy.data.images.remove(bpy.data.images[name])
@@ -205,7 +247,7 @@ def get_bake_pass_config(pass_name):
     """Get baking configuration for a specific pass
     
     Args:
-        pass_name: Name of the pass ('diffuse', 'normal', 'roughness')
+        pass_name: Name of the pass ('diffuse', 'normal', 'roughness', 'metalness')
     
     Returns:
         Dictionary with bake_type, background_color, pass_filter, required_inputs, alpha_mode, colorspace
@@ -215,7 +257,6 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'DIFFUSE',
             'background_color': (0.0, 0.0, 0.0, 1.0),
             'pass_filter': {'COLOR'},
-            'required_inputs': ['Base Color', 'Alpha'],
             'alpha_mode': 'CHANNEL_PACKED',
             'colorspace': 'sRGB'
         },
@@ -223,7 +264,6 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'NORMAL',
             'background_color': (0.5, 0.5, 1.0, 1.0),
             'pass_filter': set(),
-            'required_inputs': ['Normal'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
         },
@@ -231,10 +271,263 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'ROUGHNESS',
             'background_color': (0.5, 0.5, 0.5, 1.0),
             'pass_filter': set(),
-            'required_inputs': ['Roughness', 'Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
+        },
+        # 'metalness': {
+        #     'bake_type': 'EMIT',
+        #     'background_color': (0.0, 0.0, 0.0, 1.0),
+        #     'pass_filter': set(),
+        #     'required_inputs': ['Metallic'],
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color',
+        #     'bake_connections': [
+        #         ('Metallic', 'Emission Strength', None)
+        #     ]
+        # },
+        # 'ior': {
+        #     'bake_type': 'EMIT',
+        #     'background_color': (1.0, 1.0, 1.0, 1.0),
+        #     'pass_filter': set(),
+        #     'required_inputs': ['IOR'],
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color',
+        #     'bake_connections': [
+        #         ('IOR', 'Emission Strength', create_subtract_one_transform)
+        #     ]
+        # },
+        'glossy': {
+            'bake_type': 'GLOSSY',
+            'background_color': (0.0, 0.0, 0.0, 1.0),
+            'pass_filter': {'COLOR'},
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color'
+        },
+        'transmission': {
+            'bake_type': 'TRANSMISSION',
+            'background_color': (1.0, 1.0, 1.0, 1.0),
+            'pass_filter': {'COLOR'},
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'Non-Color'
+        },
+        # 'ambient_occlusion': {
+        #     'bake_type': 'AO',
+        #     'background_color': (1.0, 1.0, 1.0, 1.0),
+        #     'pass_filter': set(),
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color'
+        # },
+        'emission': {
+            'bake_type': 'EMIT',
+            'background_color': (0.0, 0.0, 0.0, 1.0),
+            'pass_filter': set(),
+            'alpha_mode': 'STRAIGHT',
+            'colorspace': 'sRGB'
         }
     }
     
     return configs.get(pass_name.lower(), None)
+
+def get_bake_material_config(context=None) -> dict:
+    """Get configuration for baking materials
+    
+    Args:
+        context: Blender context (optional) - if provided, filters passes based on user settings
+    
+    Returns:
+        Dictionary with bake passes and material setup configuration
+    """
+    # All available bake passes
+    all_passes = ['diffuse', 'normal', 'roughness', 'glossy', 'transmission', 'emission']
+    
+    # Filter passes based on user settings if context is provided
+    if context:
+        settings = context.scene.meddle_settings
+        enabled_passes = []
+        if settings.bake_diffuse:
+            enabled_passes.append('diffuse')
+        if settings.bake_normal:
+            enabled_passes.append('normal')
+        if settings.bake_roughness:
+            enabled_passes.append('roughness')
+        if settings.bake_glossy:
+            enabled_passes.append('glossy')
+        if settings.bake_transmission:
+            enabled_passes.append('transmission')
+        if settings.bake_emission:
+            enabled_passes.append('emission')
+        bake_passes = enabled_passes
+    else:
+        bake_passes = all_passes
+    
+    return {
+        # Bake passes to execute in order
+        'bake_passes': bake_passes,
+        
+        # Material node connections after baking
+        # Format: (from_node_key, from_output, to_node_key, to_input)
+        'node_connections': [
+            ('diffuse', 'Color', 'bsdf', 'Base Color'),
+            ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
+            ('roughness', 'Color', 'bsdf', 'Roughness'),
+            ('normal', 'Color', 'normal_map', 'Color'),
+            ('normal_map', 'Normal', 'bsdf', 'Normal'),
+            ('bsdf', 'BSDF', 'output', 'Surface'),
+            ('emission', 'Color', 'bsdf', 'Emission Color'),
+            ('emission', 'Alpha', 'bsdf', 'Emission Strength'),
+            ('glossy', 'Color', 'bsdf', 'Specular Tint'),
+            ('transmission', 'Color', 'bsdf', 'Transmission Weight'),
+        ],
+        
+        # Special nodes needed for baked material
+        # Format: (node_key, factory_function, location_offset, requires_pass)
+        'special_nodes': [
+            ('normal_map', create_normal_map_node, (-300, -200), 'normal'),
+        ],
+
+        # BSDF node default inputs
+        'bsdf_defaults': {
+            'IOR': 1.2,
+            'Metallic': 0.0,
+            'Roughness': 0.5,
+            'Base Color': (1.0, 1.0, 1.0, 1.0),
+            'Emission Color': (1.0, 1.0, 1.0, 1.0),
+            'Emission Strength': 0.0
+        }
+    }
+
+def get_atlas_config(context=None) -> dict:
+    """Get configuration for atlas creation
+    
+    Args:
+        context: Blender context (optional) - if provided, filters texture types based on user settings
+    
+    Returns:
+        Dictionary with texture_types, socket_mapping, material setup and other atlas settings
+    """
+    # All available texture types
+    return {
+        'texture_types': ['diffuse', 'normal', 'roughness', 'glossy', 'transmission', 'emission'],
+
+        # Socket mapping for finding textures by connection
+        'socket_mapping': {
+            'diffuse': 'Base Color',
+            'roughness': 'Roughness',
+            # 'metalness': 'Metallic',
+            'alpha': 'Alpha',
+            # 'ior': 'IOR',
+            'emission': 'Emission Color',
+            'glossy': 'Specular Tint',
+            'transmission': 'Transmission Weight',
+            # 'ambient_occlusion': 'Ambient Occlusion'
+        },
+        
+        # Texture node configurations for atlas material setup
+        'texture_node_configs': [
+            ('diffuse', (-400, 300), 'Atlas Diffuse'),
+            ('normal', (-400, 0), 'Atlas Normal'),
+            ('roughness', (-400, -300), 'Atlas Roughness'),
+            ('metalness', (-400, -600), 'Atlas Metalness'),
+            ('ior', (-400, -900), 'Atlas IOR'),
+            ('emission', (-400, -1200), 'Atlas Emission'),
+            ('glossy', (-400, -1500), 'Atlas Glossy'),
+            ('transmission', (-400, -1800), 'Atlas Transmission'),
+            # ('ambient_occlusion', (-400, -2100), 'Atlas Ambient Occlusion')
+        ],
+        
+        # Node connections for atlas material
+        # Format: (from_node_key, from_output, to_node_key, to_input)
+        'node_connections': [
+            ('diffuse', 'Color', 'bsdf', 'Base Color'),
+            ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
+            ('roughness', 'Color', 'bsdf', 'Roughness'),
+            # ('metalness', 'Color', 'bsdf', 'Metallic'),
+            ('normal', 'Color', 'normal_map', 'Color'),
+            ('normal_map', 'Normal', 'bsdf', 'Normal'),
+            ('bsdf', 'BSDF', 'output', 'Surface'),
+            # ('ior', 'Color', 'ior_math', 'Value'),
+            # ('ior_math', 'Value', 'bsdf', 'IOR'),
+            ('emission', 'Color', 'bsdf', 'Emission Color'),
+            ('emission', 'Alpha', 'bsdf', 'Emission Strength'),
+            ('glossy', 'Color', 'bsdf', 'Specular Tint'),
+            ('transmission', 'Color', 'bsdf', 'Transmission Weight'),
+            # ('ambient_occlusion', 'Color', 'bsdf', 'Ambient Occlusion'),
+        ],
+        
+        # Special node setup
+        # Format: (node_key, factory_function, location, requires_texture)
+        'special_nodes': [
+            ('normal_map', create_normal_map_node, (-100, -100), 'normal'),
+            # ('ior_math', create_ior_add_node, (-100, -700), 'ior'),
+            ('bsdf', create_bsdf_node, (0, 0), None),
+            ('output', create_output_node, (400, 0), None)
+        ]
+    }
+
+def set_active_uv_layer(mesh, uv_layer_name):
+    """Set the active UV layer on the mesh
+    
+    Args:
+        mesh: The mesh object to set the UV layer on
+        uv_layer_name: The name of the UV layer to set as active
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if uv_layer_name in mesh.data.uv_layers:
+        uv_layer = mesh.data.uv_layers[uv_layer_name]
+        mesh.data.uv_layers.active = uv_layer
+        uv_layer.active_render = True
+        logger.info(f"Set active UV layer to {uv_layer_name} on mesh {mesh.name}")        
+        return True
+    else:
+        logger.warning(f"UV layer {uv_layer_name} not found on mesh {mesh.name}")
+        return False
+    
+    
+def img_as_nparray(image):
+    """Convert Blender image to numpy array (H, W, 4)"""
+    pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
+    image.pixels.foreach_get(pixel_buffer)
+    return pixel_buffer.reshape(image.size[1], image.size[0], 4)
+
+
+def nparray_to_img(image, nparr):
+    """Write numpy array (H, W, 4) to Blender image"""
+    assert nparr.shape == (image.size[1], image.size[0], 4)
+    image.pixels.foreach_set(nparr.ravel())
+
+
+def find_texture_in_material(material, tex_type):
+    if not material.use_nodes:
+        return None
+    
+    # First try to find by name
+    for node in material.node_tree.nodes:
+        if node.type == 'TEX_IMAGE' and node.image:
+            node_name_lower = node.image.name.lower()
+            if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
+                return node.image
+    
+    # Then try to find by socket connections using config
+    atlas_config = get_atlas_config()
+    socket_mapping = atlas_config['socket_mapping']
+    links = material.node_tree.links
+    
+    if tex_type in socket_mapping:
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
+                return node.image
+    elif tex_type == 'normal':
+        for node in material.node_tree.nodes:
+            if node.type != 'TEX_IMAGE' or not node.image:
+                continue
+            if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
+                return node.image
+    
+    return None

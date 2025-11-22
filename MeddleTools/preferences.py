@@ -1,5 +1,37 @@
 import bpy
 
+class MaterialBakeSettings(bpy.types.PropertyGroup):
+    """Settings for individual material baking"""
+    material_name: bpy.props.StringProperty(
+        name="Material Name",
+        description="Name of the material",
+        default=""
+    )
+    
+    image_width: bpy.props.IntProperty(
+        name="Width",
+        description="Width of the baked texture",
+        default=2048,
+        min=64,
+        max=8192
+    )
+    
+    image_height: bpy.props.IntProperty(
+        name="Height",
+        description="Height of the baked texture",
+        default=2048,
+        min=64,
+        max=8192
+    )
+    
+    atlas_group: bpy.props.IntProperty(
+        name="Atlas Group",
+        description="Which atlas group this material belongs to (0 = auto-assign)",
+        default=0,
+        min=0,
+        max=32
+    )
+
 class MeddleSettings(bpy.types.PropertyGroup):
     # gltf_bone_dir: bpy.props.EnumProperty(
     #     items=[
@@ -52,16 +84,79 @@ class MeddleSettings(bpy.types.PropertyGroup):
         max=4096
     )
     
-    pack_alpha: bpy.props.BoolProperty(
-        name="Pack Alpha",
-        description="Pack alpha channel into diffuse texture's alpha channel instead of creating a separate alpha texture",
+    # Bake channel toggles
+    bake_diffuse: bpy.props.BoolProperty(
+        name="Diffuse",
+        description="Bake diffuse/base color channel",
         default=True
     )
     
+    bake_normal: bpy.props.BoolProperty(
+        name="Normal",
+        description="Bake normal map channel",
+        default=True
+    )
+    
+    bake_roughness: bpy.props.BoolProperty(
+        name="Roughness",
+        description="Bake roughness channel",
+        default=True
+    )
+    
+    # bake_metalness: bpy.props.BoolProperty(
+    #     name="Metalness",
+    #     description="Bake metalness channel",
+    #     default=True
+    # )
+    
+    # bake_ior: bpy.props.BoolProperty(
+    #     name="IOR",
+    #     description="Bake IOR (Index of Refraction) channel",
+    #     default=True
+    # )
+    
+    bake_glossy: bpy.props.BoolProperty(
+        name="Glossy",
+        description="Bake glossy channel",
+        default=False
+    )
+    
+    bake_transmission: bpy.props.BoolProperty(
+        name="Transmission",
+        description="Bake transmission channel",
+        default=False
+    )
+
+    # bake_ambient_occlusion: bpy.props.BoolProperty(
+    #     name="Ambient Occlusion",
+    #     description="Bake ambient occlusion channel",
+    #     default=False
+    # )
+
+    bake_emission: bpy.props.BoolProperty(
+        name="Emission",
+        description="Bake emission channel",
+        default=True
+    )
+    
+    material_bake_settings: bpy.props.CollectionProperty(
+        type=MaterialBakeSettings,
+        name="Material Bake Settings",
+        description="Per-material bake settings"
+    )
+    
+    active_material_index: bpy.props.IntProperty(
+        name="Active Material Index",
+        description="Currently selected material in the list",
+        default=0
+    )
+    
 def register():
+    bpy.utils.register_class(MaterialBakeSettings)
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)
     
 def unregister():
     bpy.utils.unregister_class(MeddleSettings)
+    bpy.utils.unregister_class(MaterialBakeSettings)
     del bpy.types.Scene.meddle_settings

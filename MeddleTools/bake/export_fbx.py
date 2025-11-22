@@ -72,8 +72,7 @@ class ExportFBX(Operator):
             # Generate FBX filename
             fbx_filename = self.generate_fbx_filename(context, selected_objects)
             fbx_path = os.path.join(self.directory, fbx_filename)
-            
-            # Export FBX with packed images
+
             self.export_fbx_file(context, selected_objects, fbx_path)
             
             self.report({'INFO'}, f"Successfully exported to {fbx_path}")

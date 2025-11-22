@@ -7,116 +7,163 @@ from . import bake_utils
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-
-# Non-color texture types that need specific colorspace handling
-NON_COLOR_TYPES = {'normal', 'roughness', 'alpha'}
-
-
-def img_as_nparray(image):
-    """Convert Blender image to numpy array (H, W, 4)"""
-    pixel_buffer = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
-    image.pixels.foreach_get(pixel_buffer)
-    return pixel_buffer.reshape(image.size[1], image.size[0], 4)
-
-
-def nparray_to_img(image, nparr):
-    """Write numpy array (H, W, 4) to Blender image"""
-    assert nparr.shape == (image.size[1], image.size[0], 4)
-    image.pixels.foreach_set(nparr.ravel())
-
-
-def find_texture_in_material(material, tex_type):
-    """Find the appropriate texture image for a given texture type from material
+def get_atlas_label(context):
+    """Generate label for atlas operation based on selected meshes"""
+    meshes = bake_utils.get_all_selected_meshes(context)
+    distinct_materials = set()
+    for mesh in meshes:
+        for mat in mesh.data.materials:
+            if mat:
+                distinct_materials.add(mat.name)
+    num_materials = len(distinct_materials)
+    num_meshes = len(meshes)
+    settings = context.scene.meddle_settings
     
-    Args:
-        material: Blender material to search
-        tex_type: Type of texture to find ('diffuse', 'normal', 'roughness', 'alpha')
-    
-    Returns:
-        Image or None if not found
-    """
-    if not material.use_nodes:
-        return None
-    
-    # First try to find by name
-    for node in material.node_tree.nodes:
-        if node.type == 'TEX_IMAGE' and node.image:
-            node_name_lower = node.image.name.lower()
-            if f"bake_{tex_type}" in node_name_lower or f"_{tex_type}" in node_name_lower:
-                return node.image
-    
-    # Then try to find by socket connections
-    links = material.node_tree.links
-    socket_mapping = {
-        'diffuse': 'Base Color',
-        'roughness': 'Roughness',
-        'alpha': 'Alpha'
-    }
-    
-    if tex_type in socket_mapping:
-        for node in material.node_tree.nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            if any(l.to_socket.name == socket_mapping[tex_type] and l.from_node == node for l in links):
-                return node.image
-    elif tex_type == 'normal':
-        for node in material.node_tree.nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            if any(l.to_node.type == 'NORMAL_MAP' and l.from_node == node for l in links):
-                return node.image
-    
-    return None
+    if num_materials == 0:
+        return "Atlas & Join (No materials found)"
+    elif num_materials == 1:
+        return "Atlas & Join (No atlasing needed)"
+    else:
+        # Count unique groups assigned
+        groups = set()
+        for mat_name in distinct_materials:
+            mat_setting = next((s for s in settings.material_bake_settings if s.material_name == mat_name), None)
+            if mat_setting:
+                groups.add(mat_setting.atlas_group if mat_setting.atlas_group > 0 else 0)
+        
+        num_groups = len(groups)
+        if 0 in groups and num_groups > 1:
+            return f"Atlas & Join ({num_materials} materials -> {num_groups-1}+ groups)"
+        elif num_groups == 1 and 0 in groups:
+            return f"Atlas & Join ({num_materials} materials -> individual atlases)"
+        else:
+            return f"Atlas & Join ({num_materials} materials -> {num_groups} groups)"
 
+def is_valid_bake_material(mat):
+    """Check if material is valid for atlasing (i.e. only contains compatible nodes)"""
+    if not mat.use_nodes:
+        return False
+    
+    ALLOWED_NODES = {'BSDF_PRINCIPLED', 'TEX_IMAGE', 'NORMAL_MAP', 'OUTPUT_MATERIAL', "MATH" }
+    for node in mat.node_tree.nodes:
+        if node.type not in ALLOWED_NODES:
+            return False
+        
+    return True
 
 class RunAtlas(Operator):
-    """Create texture atlas from selected mesh materials"""
+    """Combine meshes and create texture atlas to reach target material count"""
     bl_idname = "meddle.run_atlas"
-    bl_label = "Create Texture Atlas"
-    bl_description = "Create a texture atlas from the materials of the selected mesh(es)"
+    bl_label = "Atlas & Join Meshes"
+    bl_description = "Join meshes and create texture atlases to reduce material count (1 material per mesh), assign using the G input in material settings"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
-        return bake_utils.require_mesh_or_armature_selected(context)
+        mesh_or_armature_selected = bake_utils.require_mesh_or_armature_selected(context)
+        # Check if all materials are a bake material OR at least can function as one (i.e. only containing image, principled shader, etc.)
+        mesh_objects = bake_utils.get_all_selected_meshes(context)
+        valid_materials = True
+        material_count = 0
+        for mesh in mesh_objects:
+            for mat in mesh.data.materials:
+                if mat and not is_valid_bake_material(mat):
+                    valid_materials = False
+                    break
+                if mat:
+                    material_count += 1
+            if not valid_materials:
+                break
+            
+        return mesh_or_armature_selected and valid_materials and material_count > 1
     
     def execute(self, context):
-        mesh_objects = [obj for obj in context.selected_objects if obj.type == 'MESH']
-        armature_objects = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']
-        # Include child meshes of selected armatures
-        for armature in armature_objects:
-            for obj in bpy.data.objects:
-                if obj.type == 'MESH' and obj.parent == armature:
-                    if obj not in mesh_objects:
-                        mesh_objects.append(obj)
-        
-        if not mesh_objects:
+        meshes = bake_utils.get_all_selected_meshes(context)        
+        if not meshes:
             self.report({'ERROR'}, "No mesh objects selected.")
             return {'CANCELLED'}
         
-        if len(mesh_objects) > 1:
-            self.report({'INFO'}, f"Joining {len(mesh_objects)} meshes...")
-            logger.info(f"Joining {len(mesh_objects)} meshes for atlas")
-            
-            bpy.ops.object.select_all(action='DESELECT')
-            for obj in mesh_objects:
-                obj.select_set(True)
-            
-            context.view_layer.objects.active = mesh_objects[0]
-            bpy.ops.object.join()
-            joined_mesh = context.view_layer.objects.active
-        else:
-            joined_mesh = mesh_objects[0]
+        settings = context.scene.meddle_settings
         
-        atlas_name = f"Atlas_{joined_mesh.name}"
-        atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
+        # Get all materials from selected meshes
+        all_materials = []
+        mesh_by_material = {}  # Map material -> list of meshes using it
         
-        if atlas_material:
-            self.report({'INFO'}, f"Texture atlas created successfully: {atlas_material.name}")
-            return {'FINISHED'}
-        else:
-            self.report({'ERROR'}, "Failed to create texture atlas")
+        for mesh in meshes:
+            for mat in mesh.data.materials:
+                if mat:
+                    if mat not in mesh_by_material:
+                        mesh_by_material[mat] = []
+                        all_materials.append(mat)
+                    if mesh not in mesh_by_material[mat]:
+                        mesh_by_material[mat].append(mesh)
+        
+        num_materials = len(all_materials)
+        logger.info(f"Found {num_materials} unique materials across {len(meshes)} meshes")
+        
+        if num_materials == 0:
+            self.report({'ERROR'}, "No materials found on selected meshes")
             return {'CANCELLED'}
+        
+        # Group materials by their assigned atlas_group
+        material_groups = self.group_materials_manually(all_materials, settings)
+        logger.info(f"Manual grouping created {len(material_groups)} groups")
+        
+        # Check if atlasing is actually needed
+        if len(material_groups) >= num_materials:
+            self.report({'INFO'}, "All materials in separate groups, no atlasing needed")
+            return {'CANCELLED'}
+        
+        # Process each group: collect meshes, join them, create atlas
+        atlas_meshes = []
+        for group_idx, material_group in enumerate(material_groups):
+            logger.info(f"Processing group {group_idx + 1}/{len(material_groups)} with {len(material_group)} materials")
+            
+            # Collect all meshes that use materials in this group
+            group_meshes = set()
+            for mat in material_group:
+                group_meshes.update(mesh_by_material[mat])
+            
+            group_meshes = list(group_meshes)
+            logger.info(f"Group {group_idx} contains {len(group_meshes)} meshes")
+            
+            # Join meshes in this group
+            if len(group_meshes) > 1:
+                # Store and rename active UV layers to a common name before joining
+                common_uv_name = "MEDDLE_ATLAS_UV"
+                for mesh in group_meshes:
+                    if mesh.data.uv_layers:
+                        active_uv = mesh.data.uv_layers.active
+                        if active_uv:
+                            active_uv.name = common_uv_name
+                            logger.info(f"Renamed UV layer to '{common_uv_name}' on mesh '{mesh.name}'")
+                
+                bpy.ops.object.select_all(action='DESELECT')
+                for obj in group_meshes:
+                    obj.select_set(True)
+                
+                context.view_layer.objects.active = group_meshes[0]
+                bpy.ops.object.join()
+                joined_mesh = context.view_layer.objects.active
+                
+                # Set the common UV layer as active on the joined mesh
+                bake_utils.set_active_uv_layer(joined_mesh, common_uv_name)
+            else:
+                joined_mesh = group_meshes[0]
+            
+            # Create atlas for this group
+            atlas_name = f"Atlas_{joined_mesh.name}_{group_idx}" if len(material_groups) > 1 else f"Atlas_{joined_mesh.name}"
+            atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
+            
+            if atlas_material:
+                atlas_meshes.append(joined_mesh)
+                logger.info(f"Successfully created atlas for group {group_idx}")
+            else:
+                self.report({'ERROR'}, f"Failed to create atlas for group {group_idx}")
+                return {'CANCELLED'}
+        
+        self.report({'INFO'}, f"Created {len(atlas_meshes)} atlas mesh(es) successfully")
+        return {'FINISHED'}
     
     def analyze_material_sizes(self, materials, texture_types, mesh):
         """Analyze materials to determine texture sizes"""
@@ -128,7 +175,7 @@ class RunAtlas(Operator):
             
             if material.use_nodes:
                 # Find all textures and determine size
-                texture_types_found = {t: find_texture_in_material(material, t) for t in texture_types}
+                texture_types_found = {t: bake_utils.find_texture_in_material(material, t) for t in texture_types}
                 
                 for image in texture_types_found.values():
                     if image and image.has_data:
@@ -149,8 +196,8 @@ class RunAtlas(Operator):
         return material_info
     
     def calculate_atlas_layout(self, material_info):
-        """Calculate efficient atlas layout using skyline packing algorithm with square optimization"""
-        sorted_materials = sorted(material_info, key=lambda x: x['width'] * x['height'], reverse=True)
+        """Calculate atlas layout using skyline packing algorithm"""
+        sorted_materials = sorted(material_info, key=lambda x: max(x['width'], x['height']), reverse=True)
         logger.info(f"Packing {len(sorted_materials)} materials")
         
         # Calculate total area and estimate square dimensions
@@ -173,45 +220,198 @@ class RunAtlas(Operator):
         
         logger.info(f"Target square size: ~{estimated_side}px, initial width limit: {width_limit}px")
         
-        placements, shelves, atlas_height, max_used_width = {}, [], 0, 0
+        # Skyline algorithm: maintain list of segments with (x, y, width)
+        # representing the "skyline" - the top edge of placed rectangles
+        skyline = [{'x': 0, 'y': 0, 'width': width_limit}]
+        placements = {}
+        max_height = 0
 
         for info in sorted_materials:
-            width, height, mat_idx = info['width'], info['height'], info['index']
-            placement = None
-
-            # Try to fit on existing shelf - find best fit shelf
-            best_shelf = None
+            rect_width, rect_height, mat_idx = info['width'], info['height'], info['index']
+            
+            # Find best position along skyline
+            best_pos = None
+            best_y = float('inf')
+            best_idx = -1
             best_waste = float('inf')
             
-            for shelf in shelves:
-                if height <= shelf['height'] and shelf['next_x'] + width <= width_limit:
-                    # Calculate wasted space (height difference)
-                    waste = shelf['height'] - height
-                    if waste < best_waste:
+            for i, segment in enumerate(skyline):
+                # Check if rectangle fits starting at this segment
+                can_fit, y_pos = self.can_fit_at_segment(skyline, i, rect_width, rect_height, width_limit)
+                
+                if can_fit:
+                    # Calculate waste (how much vertical space this creates)
+                    waste = y_pos - segment['y']
+                    
+                    # Prefer lower positions, then less waste
+                    if y_pos < best_y or (y_pos == best_y and waste < best_waste):
+                        best_pos = segment['x']
+                        best_y = y_pos
+                        best_idx = i
                         best_waste = waste
-                        best_shelf = shelf
             
-            if best_shelf is not None:
-                placement = {'x': best_shelf['next_x'], 'y': best_shelf['y'], 'width': width, 'height': height}
-                best_shelf['next_x'] += width
-                best_shelf['used_width'] = max(best_shelf['used_width'], best_shelf['next_x'])
-                max_used_width = max(max_used_width, best_shelf['next_x'])
-            else:
-                # Create new shelf if needed
-                placement = {'x': 0, 'y': atlas_height, 'width': width, 'height': height}
-                shelves.append({'y': atlas_height, 'height': height, 'next_x': width, 'used_width': width})
-                atlas_height += height
-                max_used_width = max(max_used_width, width)
-
+            if best_pos is None:
+                logger.error(f"Could not fit material {mat_idx} ({rect_width}x{rect_height})")
+                continue
+            
+            # Place the rectangle
+            placement = {'x': best_pos, 'y': best_y, 'width': rect_width, 'height': rect_height}
             placements[mat_idx] = placement
+            max_height = max(max_height, best_y + rect_height)
+            
+            # Update skyline
+            self.update_skyline(skyline, best_pos, best_y, rect_width, rect_height)
+            
+            logger.debug(f"Placed material {mat_idx}: ({best_pos}, {best_y}) size {rect_width}x{rect_height}")
         
-        atlas_width = next_power_of_2(max(max_used_width, 64))
-        atlas_height = next_power_of_2(max(atlas_height, 64))
-        efficiency = (total_area / (atlas_width * atlas_height) * 100) if atlas_width * atlas_height > 0 else 0
-        aspect_ratio = atlas_width / atlas_height if atlas_height > 0 else 1.0
-        logger.info(f"Atlas: {atlas_width}x{atlas_height} (aspect: {aspect_ratio:.2f}:1), efficiency: {efficiency:.1f}%")
+        atlas_width = next_power_of_2(max(width_limit, 64))
+        atlas_height = next_power_of_2(max(max_height, 64))
         
-        return {'width': atlas_width, 'height': atlas_height, 'placements': placements}
+        # Calculate efficiency
+        used_area = sum(info['width'] * info['height'] for info in material_info)
+        efficiency = (used_area / (atlas_width * atlas_height)) * 100
+        
+        logger.info(f"Atlas: {atlas_width}x{atlas_height}, Efficiency: {efficiency:.1f}%")
+        return {
+            'width': atlas_width,
+            'height': atlas_height,
+            'placements': placements,
+        }
+    
+    def can_fit_at_segment(self, skyline, start_idx, width, height, width_limit):
+        """Check if a rectangle can fit at the given skyline segment
+        
+        Returns (can_fit, y_position) where y_position is the lowest Y where the rectangle top would be
+        """
+        segment = skyline[start_idx]
+        x = segment['x']
+        
+        # Check if rectangle would exceed width limit
+        if x + width > width_limit:
+            return False, 0
+        
+        # Find the maximum Y value across all segments this rectangle would span
+        max_y = segment['y']
+        current_x = x
+        
+        for i in range(start_idx, len(skyline)):
+            seg = skyline[i]
+            if current_x >= x + width:
+                break
+            
+            if seg['x'] < x + width:
+                max_y = max(max_y, seg['y'])
+                current_x = seg['x'] + seg['width']
+        
+        # Check if we have enough continuous width
+        if current_x < x + width:
+            return False, 0
+        
+        return True, max_y
+    
+    def update_skyline(self, skyline, x, y, width, height):
+        """Update the skyline after placing a rectangle
+        
+        This removes/modifies segments covered by the new rectangle and adds a new segment on top
+        """
+        new_y = y + height
+        rect_right = x + width
+        
+        # Find segments that overlap with the placed rectangle
+        new_skyline = []
+        i = 0
+        
+        while i < len(skyline):
+            seg = skyline[i]
+            seg_right = seg['x'] + seg['width']
+            
+            # Segment is completely before the rectangle
+            if seg_right <= x:
+                new_skyline.append(seg)
+                i += 1
+                continue
+            
+            # Segment is completely after the rectangle
+            if seg['x'] >= rect_right:
+                new_skyline.append(seg)
+                i += 1
+                continue
+            
+            # Segment overlaps with rectangle
+            # Add left part if exists
+            if seg['x'] < x:
+                new_skyline.append({
+                    'x': seg['x'],
+                    'y': seg['y'],
+                    'width': x - seg['x']
+                })
+            
+            # Add right part if exists
+            if seg_right > rect_right:
+                new_skyline.append({
+                    'x': rect_right,
+                    'y': seg['y'],
+                    'width': seg_right - rect_right
+                })
+            
+            i += 1
+        
+        # Add the new segment on top of the placed rectangle
+        new_skyline.append({
+            'x': x,
+            'y': new_y,
+            'width': width
+        })
+        
+        # Sort by x position and merge adjacent segments with same height
+        new_skyline.sort(key=lambda s: s['x'])
+        
+        merged = []
+        for seg in new_skyline:
+            if merged and merged[-1]['y'] == seg['y'] and merged[-1]['x'] + merged[-1]['width'] == seg['x']:
+                # Merge with previous segment
+                merged[-1]['width'] += seg['width']
+            else:
+                merged.append(seg)
+        
+        skyline.clear()
+        skyline.extend(merged)
+    
+    def group_materials_manually(self, materials, settings):
+        """Group materials based on their manually assigned atlas_group values
+        
+        Returns a list of material groups, where each group is a list of materials.
+        Materials with atlas_group=0 are put into separate individual groups.
+        """
+        groups_dict = {}  # group_id -> list of materials
+        ungrouped = []  # Materials with group=0
+        
+        for mat in materials:
+            mat_setting = next((s for s in settings.material_bake_settings if s.material_name == mat.name), None)
+            
+            if mat_setting and mat_setting.atlas_group > 0:
+                group_id = mat_setting.atlas_group
+                if group_id not in groups_dict:
+                    groups_dict[group_id] = []
+                groups_dict[group_id].append(mat)
+                logger.info(f"Material '{mat.name}' assigned to group {group_id}")
+            else:
+                # Materials with no setting or group=0 go into individual groups
+                ungrouped.append(mat)
+                logger.info(f"Material '{mat.name}' not assigned to a group (will be in separate atlas)")
+        
+        # Build final list of groups
+        material_groups = []
+        
+        # Add assigned groups (sorted by group ID for consistency)
+        for group_id in sorted(groups_dict.keys()):
+            material_groups.append(groups_dict[group_id])
+        
+        # Add ungrouped materials as individual groups
+        for mat in ungrouped:
+            material_groups.append([mat])
+        
+        return material_groups
     
     def create_texture_atlas(self, context, joined_mesh, atlas_name):
         """Create texture atlas from all materials on mesh and update UVs"""
@@ -226,16 +426,10 @@ class RunAtlas(Operator):
         num_materials = len(materials)
         self.report({'INFO'}, f"Creating atlas from {num_materials} material(s)...")
         
-        # Check if alpha should be packed into diffuse
-        pack_alpha = context.scene.meddle_settings.pack_alpha
-        
-        # Determine texture types based on pack_alpha setting
-        if pack_alpha:
-            texture_types = ['diffuse', 'normal', 'roughness']
-            logger.info("Pack alpha enabled - alpha will be packed into diffuse texture")
-        else:
-            texture_types = ['diffuse', 'normal', 'roughness', 'alpha']
-            logger.info("Pack alpha disabled - separate alpha texture will be created")
+        # Get atlas configuration
+        atlas_config = bake_utils.get_atlas_config(context)
+        texture_types = atlas_config['texture_types']
+        logger.info(f"Atlas texture types: {texture_types}")
         
         material_info = self.analyze_material_sizes(materials, texture_types, joined_mesh.data)
         atlas_layout = self.calculate_atlas_layout(material_info)
@@ -246,10 +440,10 @@ class RunAtlas(Operator):
         self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
         atlas_images = self.create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
-        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha)
+        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types)
         
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
-        atlas_material = self.create_atlas_material(atlas_name, atlas_images, pack_alpha)
+        atlas_material = self.create_atlas_material(context, atlas_name, atlas_images)
         
         joined_mesh.data.materials.clear()
         joined_mesh.data.materials.append(atlas_material)
@@ -267,14 +461,6 @@ class RunAtlas(Operator):
         """Create and initialize atlas images for each texture type"""
         atlas_images = {}
         
-        # Define default colors for initialization
-        default_colors = {
-            'diffuse': (0.0, 0.0, 0.0, 1.0),
-            'normal': (0.5, 0.5, 1.0, 1.0),
-            'roughness': (0.5, 0.5, 0.5, 1.0),
-            'alpha': (1.0, 1.0, 1.0, 1.0)
-        }
-        
         for tex_type in texture_types:
             atlas_image_name = f"{atlas_name}_{tex_type}"
             atlas_image = bpy.data.images.new(
@@ -286,27 +472,33 @@ class RunAtlas(Operator):
             atlas_image.filepath = bpy.path.abspath(f"//Bake/{atlas_image_name}.png")
             atlas_image.file_format = 'PNG'
             
-            if tex_type in NON_COLOR_TYPES:
-                atlas_image.colorspace_settings.name = 'Non-Color'
+            # Get configuration from bake_utils
+            config = bake_utils.get_bake_pass_config(tex_type)
+            if config:
+                atlas_image.colorspace_settings.name = config['colorspace']
+                default_color = config['background_color']
+            else:
+                # Fallback for unknown texture types
+                atlas_image.colorspace_settings.name = 'sRGB'
+                default_color = (0.0, 0.0, 0.0, 1.0)
             
             # Initialize with default color for this texture type
-            default_color = default_colors.get(tex_type, (0.0, 0.0, 0.0, 1.0))
             rgba = np.zeros((atlas_height, atlas_width, 4), dtype=np.float32)
             rgba[:, :] = default_color
             
-            nparray_to_img(atlas_image, rgba)
+            bake_utils.nparray_to_img(atlas_image, rgba)
             atlas_images[tex_type] = atlas_image
         
         return atlas_images
     
-    def copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types, pack_alpha):
+    def copy_textures_to_atlas(self, materials, material_info, atlas_layout, atlas_images, texture_types):
         """Copy material textures into atlas and build UV mapping"""
         material_uv_mapping = {}
         material_info_by_idx = {info['index']: info for info in material_info}
         placements = atlas_layout['placements']
         atlas_width = atlas_layout['width']
         atlas_height = atlas_layout['height']
-        atlas_buffers = {tex_type: img_as_nparray(image) for tex_type, image in atlas_images.items()}
+        atlas_buffers = {tex_type: bake_utils.img_as_nparray(image) for tex_type, image in atlas_images.items()}
 
         for mat_idx, material in enumerate(materials):
             placement = placements.get(mat_idx)
@@ -333,14 +525,10 @@ class RunAtlas(Operator):
             material_uv_mapping[mat_idx] = (u_offset, v_offset, u_scale, v_scale)
 
             logger.info(f"Material {mat_idx} ({material.name}) -> pos ({tile_x}, {tile_y}) size ({tile_w}x{tile_h})")
-
-            # Handle alpha texture separately if pack_alpha is enabled
-            alpha_source = None
-            if pack_alpha:
-                alpha_source = find_texture_in_material(material, 'alpha')
+            alpha_source = bake_utils.find_texture_in_material(material, 'alpha')
 
             for tex_type in texture_types:
-                source_image = find_texture_in_material(material, tex_type)
+                source_image = bake_utils.find_texture_in_material(material, tex_type)
                 
                 if not source_image or not source_image.has_data:
                     logger.debug(f"No {tex_type} texture found for material '{material.name}'")
@@ -348,7 +536,7 @@ class RunAtlas(Operator):
 
                 try:
                     # Pass alpha source if we're packing alpha into diffuse
-                    alpha_img = alpha_source if (pack_alpha and tex_type == 'diffuse') else None
+                    alpha_img = alpha_source
                     
                     self.copy_texture_to_atlas(
                         source_image,
@@ -364,11 +552,11 @@ class RunAtlas(Operator):
                     logger.exception(f"Failed copying {tex_type} for material '{material.name}': {e}")
         
         for tex_type, pixels in atlas_buffers.items():
-            nparray_to_img(atlas_images[tex_type], pixels)
+            bake_utils.nparray_to_img(atlas_images[tex_type], pixels)
 
         return material_uv_mapping
     
-    def create_atlas_material(self, atlas_name, atlas_images, pack_alpha):
+    def create_atlas_material(self, context, atlas_name, atlas_images):
         """Create material with atlas textures"""
         atlas_material = bpy.data.materials.new(name=atlas_name)
         atlas_material.use_nodes = True
@@ -377,54 +565,45 @@ class RunAtlas(Operator):
         
         nodes.clear()
         
-        output_node = nodes.new('ShaderNodeOutputMaterial')
-        output_node.location = (400, 0)
+        # Get atlas configuration
+        atlas_config = bake_utils.get_atlas_config(context)
+        texture_configs = atlas_config['texture_node_configs']
+        special_nodes_config = atlas_config['special_nodes']
+        connections = atlas_config['node_connections']
         
-        bsdf_node = nodes.new('ShaderNodeBsdfPrincipled')
-        bsdf_node.location = (0, 0)
-        bsdf_node.inputs['IOR'].default_value = 1.0
-        bsdf_node.inputs['Metallic'].default_value = 0.0
-        
-        # Configure texture nodes based on pack_alpha setting
-        if pack_alpha:
-            texture_configs = [
-                ('diffuse', (-400, 300), 'Atlas Diffuse'),
-                ('normal', (-400, 0), 'Atlas Normal'),
-                ('roughness', (-400, -300), 'Atlas Roughness')
-            ]
-        else:
-            texture_configs = [
-                ('diffuse', (-400, 300), 'Atlas Diffuse'),
-                ('alpha', (-400, 100), 'Atlas Alpha'),
-                ('normal', (-400, -100), 'Atlas Normal'),
-                ('roughness', (-400, -300), 'Atlas Roughness')
-            ]
-        
+        # Create texture nodes only for available textures
         texture_nodes = {}
         for tex_type, location, label in texture_configs:
-            tex_node = nodes.new('ShaderNodeTexImage')
-            tex_node.image = atlas_images[tex_type]
-            tex_node.location = location
-            tex_node.label = label
-            texture_nodes[tex_type] = tex_node
+            if tex_type in atlas_images:
+                tex_node = nodes.new('ShaderNodeTexImage')
+                tex_node.image = atlas_images[tex_type]
+                tex_node.location = location
+                tex_node.label = label
+                texture_nodes[tex_type] = tex_node
         
-        normal_map = nodes.new('ShaderNodeNormalMap')
-        normal_map.location = (-100, -100)
+        # Create special nodes (normal_map, ior_math, bsdf, output)
+        # Only create nodes that are needed based on available textures
+        special_nodes = {}
+        texture_types = atlas_config['texture_types']
         
-        # Connect nodes
-        links.new(texture_nodes['diffuse'].outputs['Color'], bsdf_node.inputs['Base Color'])
+        for node_key, factory_func, location, requires_texture in special_nodes_config:
+            # Check if this node requires a specific texture type to be available
+            if requires_texture and requires_texture not in texture_types:
+                continue
+            
+            node = factory_func(atlas_material, location)
+            special_nodes[node_key] = node
         
-        if pack_alpha:
-            # When packing, use diffuse's alpha channel
-            links.new(texture_nodes['diffuse'].outputs['Alpha'], bsdf_node.inputs['Alpha'])
-        else:
-            # When not packing, use separate alpha texture
-            links.new(texture_nodes['alpha'].outputs['Color'], bsdf_node.inputs['Alpha'])
+        # Combine all nodes for connection lookups
+        all_nodes = {**texture_nodes, **special_nodes}
         
-        links.new(texture_nodes['roughness'].outputs['Color'], bsdf_node.inputs['Roughness'])
-        links.new(texture_nodes['normal'].outputs['Color'], normal_map.inputs['Color'])
-        links.new(normal_map.outputs['Normal'], bsdf_node.inputs['Normal'])
-        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
+        # Create connections based on config, skipping missing nodes
+        for from_key, from_output, to_key, to_input in connections:
+            if from_key not in all_nodes or to_key not in all_nodes:
+                continue
+            from_node = all_nodes[from_key]
+            to_node = all_nodes[to_key]
+            links.new(from_node.outputs[from_output], to_node.inputs[to_input])
         
         return atlas_material
     
@@ -434,7 +613,7 @@ class RunAtlas(Operator):
         atlas_height, atlas_width = atlas_pixels.shape[:2]
 
         # Get full source texture
-        source_pixels = img_as_nparray(source_image)
+        source_pixels = bake_utils.img_as_nparray(source_image)
         
         # Handle special texture type processing
         if tex_type == 'alpha':
@@ -442,7 +621,7 @@ class RunAtlas(Operator):
             source_pixels = np.concatenate([alpha_channel] * 3 + [np.ones_like(alpha_channel)], axis=2)
         elif tex_type == 'diffuse' and alpha_image:
             logger.info(f"Packing alpha channel into diffuse texture")
-            alpha_pixels = img_as_nparray(alpha_image)
+            alpha_pixels = bake_utils.img_as_nparray(alpha_image)
             
             if alpha_pixels.shape[:2] != source_pixels.shape[:2]:
                 alpha_pixels = self.bilinear_resize(alpha_pixels, source_width, source_height, alpha_image.size[0], alpha_image.size[1])
@@ -484,9 +663,17 @@ class RunAtlas(Operator):
         logger.info(f"Updating UVs for atlas on mesh: {mesh_obj.name}")
         
         mesh = mesh_obj.data
-        uv_layer = mesh.uv_layers.get("UVMap")
+        # uv_layer = mesh.uv_layers.get("UVMap")
+        # if not uv_layer:
+        #     logger.warning("No UVMap found on mesh")
+        #     return
+        # get the active UV layer
+        uv_layer = mesh.uv_layers.active
         if not uv_layer:
-            logger.warning("No UVMap found on mesh")
+            logger.warning("No active UV layer found on mesh")
+            return
+        if not uv_layer.active_render:
+            logger.warning("Active UV layer is not set for rendering")
             return
         
         for poly in mesh.polygons:
