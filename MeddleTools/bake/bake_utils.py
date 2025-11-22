@@ -257,7 +257,6 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'DIFFUSE',
             'background_color': (0.0, 0.0, 0.0, 1.0),
             'pass_filter': {'COLOR'},
-            'required_inputs': ['Base Color', 'Alpha'],
             'alpha_mode': 'CHANNEL_PACKED',
             'colorspace': 'sRGB'
         },
@@ -265,7 +264,6 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'NORMAL',
             'background_color': (0.5, 0.5, 1.0, 1.0),
             'pass_filter': set(),
-            'required_inputs': ['Normal'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
         },
@@ -273,37 +271,56 @@ def get_bake_pass_config(pass_name):
             'bake_type': 'ROUGHNESS',
             'background_color': (0.5, 0.5, 0.5, 1.0),
             'pass_filter': set(),
-            'required_inputs': ['Roughness', 'Metallic'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'Non-Color'
         },
-        'metalness': {
-            'bake_type': 'EMIT',
+        # 'metalness': {
+        #     'bake_type': 'EMIT',
+        #     'background_color': (0.0, 0.0, 0.0, 1.0),
+        #     'pass_filter': set(),
+        #     'required_inputs': ['Metallic'],
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color',
+        #     'bake_connections': [
+        #         ('Metallic', 'Emission Strength', None)
+        #     ]
+        # },
+        # 'ior': {
+        #     'bake_type': 'EMIT',
+        #     'background_color': (1.0, 1.0, 1.0, 1.0),
+        #     'pass_filter': set(),
+        #     'required_inputs': ['IOR'],
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color',
+        #     'bake_connections': [
+        #         ('IOR', 'Emission Strength', create_subtract_one_transform)
+        #     ]
+        # },
+        'glossy': {
+            'bake_type': 'GLOSSY',
             'background_color': (0.0, 0.0, 0.0, 1.0),
-            'pass_filter': set(),
-            'required_inputs': ['Metallic'],
+            'pass_filter': {'COLOR'},
             'alpha_mode': 'STRAIGHT',
-            'colorspace': 'Non-Color',
-            'bake_connections': [
-                ('Metallic', 'Emission Strength', None)
-            ]
+            'colorspace': 'Non-Color'
         },
-        'ior': {
-            'bake_type': 'EMIT',
+        'transmission': {
+            'bake_type': 'TRANSMISSION',
             'background_color': (1.0, 1.0, 1.0, 1.0),
-            'pass_filter': set(),
-            'required_inputs': ['IOR'],
+            'pass_filter': {'COLOR'},
             'alpha_mode': 'STRAIGHT',
-            'colorspace': 'Non-Color',
-            'bake_connections': [
-                ('IOR', 'Emission Strength', create_subtract_one_transform)
-            ]
+            'colorspace': 'Non-Color'
         },
+        # 'ambient_occlusion': {
+        #     'bake_type': 'AO',
+        #     'background_color': (1.0, 1.0, 1.0, 1.0),
+        #     'pass_filter': set(),
+        #     'alpha_mode': 'STRAIGHT',
+        #     'colorspace': 'Non-Color'
+        # },
         'emission': {
             'bake_type': 'EMIT',
             'background_color': (0.0, 0.0, 0.0, 1.0),
             'pass_filter': set(),
-            'required_inputs': ['Emission Color', 'Emission Strength'],
             'alpha_mode': 'STRAIGHT',
             'colorspace': 'sRGB'
         }
@@ -321,7 +338,7 @@ def get_bake_material_config(context=None) -> dict:
         Dictionary with bake passes and material setup configuration
     """
     # All available bake passes
-    all_passes = ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission']
+    all_passes = ['diffuse', 'normal', 'roughness', 'glossy', 'transmission', 'emission']
     
     # Filter passes based on user settings if context is provided
     if context:
@@ -333,10 +350,10 @@ def get_bake_material_config(context=None) -> dict:
             enabled_passes.append('normal')
         if settings.bake_roughness:
             enabled_passes.append('roughness')
-        if settings.bake_metalness:
-            enabled_passes.append('metalness')
-        if settings.bake_ior:
-            enabled_passes.append('ior')
+        if settings.bake_glossy:
+            enabled_passes.append('glossy')
+        if settings.bake_transmission:
+            enabled_passes.append('transmission')
         if settings.bake_emission:
             enabled_passes.append('emission')
         bake_passes = enabled_passes
@@ -353,21 +370,19 @@ def get_bake_material_config(context=None) -> dict:
             ('diffuse', 'Color', 'bsdf', 'Base Color'),
             ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
             ('roughness', 'Color', 'bsdf', 'Roughness'),
-            ('metalness', 'Color', 'bsdf', 'Metallic'),
             ('normal', 'Color', 'normal_map', 'Color'),
             ('normal_map', 'Normal', 'bsdf', 'Normal'),
             ('bsdf', 'BSDF', 'output', 'Surface'),
-            ('ior', 'Color', 'ior_math', 'Value'),
-            ('ior_math', 'Value', 'bsdf', 'IOR'),
             ('emission', 'Color', 'bsdf', 'Emission Color'),
             ('emission', 'Alpha', 'bsdf', 'Emission Strength'),
+            ('glossy', 'Color', 'bsdf', 'Specular Tint'),
+            ('transmission', 'Color', 'bsdf', 'Transmission Weight'),
         ],
         
         # Special nodes needed for baked material
         # Format: (node_key, factory_function, location_offset, requires_pass)
         'special_nodes': [
             ('normal_map', create_normal_map_node, (-300, -200), 'normal'),
-            ('ior_math', create_ior_add_node, (-300, -700), 'ior')
         ],
 
         # BSDF node default inputs
@@ -391,39 +406,20 @@ def get_atlas_config(context=None) -> dict:
         Dictionary with texture_types, socket_mapping, material setup and other atlas settings
     """
     # All available texture types
-    all_texture_types = ['diffuse', 'normal', 'roughness', 'metalness', 'ior', 'emission']
-    
-    # Filter texture types based on user settings if context is provided
-    if context:
-        settings = context.scene.meddle_settings
-        enabled_types = []
-        if settings.bake_diffuse:
-            enabled_types.append('diffuse')
-        if settings.bake_normal:
-            enabled_types.append('normal')
-        if settings.bake_roughness:
-            enabled_types.append('roughness')
-        if settings.bake_metalness:
-            enabled_types.append('metalness')
-        if settings.bake_ior:
-            enabled_types.append('ior')
-        if settings.bake_emission:
-            enabled_types.append('emission')
-        texture_types = enabled_types
-    else:
-        texture_types = all_texture_types
-    
     return {
-        'texture_types': texture_types,
+        'texture_types': ['diffuse', 'normal', 'roughness', 'glossy', 'transmission', 'emission'],
 
         # Socket mapping for finding textures by connection
         'socket_mapping': {
             'diffuse': 'Base Color',
             'roughness': 'Roughness',
-            'metalness': 'Metallic',
+            # 'metalness': 'Metallic',
             'alpha': 'Alpha',
-            'ior': 'IOR',
-            'emission': 'Emission Color'
+            # 'ior': 'IOR',
+            'emission': 'Emission Color',
+            'glossy': 'Specular Tint',
+            'transmission': 'Transmission Weight',
+            # 'ambient_occlusion': 'Ambient Occlusion'
         },
         
         # Texture node configurations for atlas material setup
@@ -433,7 +429,10 @@ def get_atlas_config(context=None) -> dict:
             ('roughness', (-400, -300), 'Atlas Roughness'),
             ('metalness', (-400, -600), 'Atlas Metalness'),
             ('ior', (-400, -900), 'Atlas IOR'),
-            ('emission', (-400, -1200), 'Atlas Emission')
+            ('emission', (-400, -1200), 'Atlas Emission'),
+            ('glossy', (-400, -1500), 'Atlas Glossy'),
+            ('transmission', (-400, -1800), 'Atlas Transmission'),
+            # ('ambient_occlusion', (-400, -2100), 'Atlas Ambient Occlusion')
         ],
         
         # Node connections for atlas material
@@ -442,21 +441,24 @@ def get_atlas_config(context=None) -> dict:
             ('diffuse', 'Color', 'bsdf', 'Base Color'),
             ('diffuse', 'Alpha', 'bsdf', 'Alpha'),
             ('roughness', 'Color', 'bsdf', 'Roughness'),
-            ('metalness', 'Color', 'bsdf', 'Metallic'),
+            # ('metalness', 'Color', 'bsdf', 'Metallic'),
             ('normal', 'Color', 'normal_map', 'Color'),
             ('normal_map', 'Normal', 'bsdf', 'Normal'),
             ('bsdf', 'BSDF', 'output', 'Surface'),
-            ('ior', 'Color', 'ior_math', 'Value'),
-            ('ior_math', 'Value', 'bsdf', 'IOR'),
+            # ('ior', 'Color', 'ior_math', 'Value'),
+            # ('ior_math', 'Value', 'bsdf', 'IOR'),
             ('emission', 'Color', 'bsdf', 'Emission Color'),
-            ('emission', 'Alpha', 'bsdf', 'Emission Strength')
+            ('emission', 'Alpha', 'bsdf', 'Emission Strength'),
+            ('glossy', 'Color', 'bsdf', 'Specular Tint'),
+            ('transmission', 'Color', 'bsdf', 'Transmission Weight'),
+            # ('ambient_occlusion', 'Color', 'bsdf', 'Ambient Occlusion'),
         ],
         
         # Special node setup
         # Format: (node_key, factory_function, location, requires_texture)
         'special_nodes': [
             ('normal_map', create_normal_map_node, (-100, -100), 'normal'),
-            ('ior_math', create_ior_add_node, (-100, -700), 'ior'),
+            # ('ior_math', create_ior_add_node, (-100, -700), 'ior'),
             ('bsdf', create_bsdf_node, (0, 0), None),
             ('output', create_output_node, (400, 0), None)
         ]

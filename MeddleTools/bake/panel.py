@@ -6,6 +6,7 @@ from .create_copy_for_baking import CreateCopyForBaking, get_create_copy_label
 from .create_uv_bake_layers import CreateUVBakeLayers, get_create_uv_label
 from .join_meshes import JoinMeshes, get_join_label
 from . import bake_utils
+from . import bake
 
 class MEDDLE_UL_MaterialBakeList(bpy.types.UIList):
     """UI List for displaying materials with bake settings"""
@@ -191,7 +192,7 @@ class MeddleBakePanel(bpy.types.Panel):
         # box.operator(RunBake.bl_idname, text=get_bake_label(context)) 
         # want to show bake samples and button side by side
         box.separator()
-        
+
         # Bake channel selection
         channel_box = box.box()
         channel_box.label(text="Bake Channels", icon='NODE')
@@ -200,15 +201,23 @@ class MeddleBakePanel(bpy.types.Panel):
         row.prop(settings, "bake_normal", text="Normal", toggle=True)
         row.prop(settings, "bake_roughness", text="Rough", toggle=True)
         row = channel_box.row(align=True)
-        row.prop(settings, "bake_metalness", text="Metal", toggle=True)
-        row.prop(settings, "bake_ior", text="IOR", toggle=True)
+        # row.prop(settings, "bake_metalness", text="Metal", toggle=True)
+        # row.prop(settings, "bake_ior", text="IOR", toggle=True)
+        row.prop(settings, "bake_glossy", text="Glossy", toggle=True)
+        row.prop(settings, "bake_transmission", text="Transmission", toggle=True)
+        # row.prop(settings, "bake_ambient_occlusion", text="Ambient Occlusion", toggle=True)        
         row.prop(settings, "bake_emission", text="Emission", toggle=True)
         
         box.separator()
         row = box.row(align=True)
         row.operator(RunBake.bl_idname, text=get_bake_label(context))
         row.prop(settings, "bake_samples")
-        
+        bake_notices = bake.get_bake_notices(context)
+        if bake_notices:
+            row = box.row(align=True)
+            row.alert = True
+            row.label(text=bake_notices, icon='ERROR')
+
         row = box.row(align=True)
         row.operator(RunAtlas.bl_idname, text=get_atlas_label(context))
         row.operator(JoinMeshes.bl_idname, text=get_join_label(context))

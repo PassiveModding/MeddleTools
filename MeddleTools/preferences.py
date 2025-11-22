@@ -103,18 +103,36 @@ class MeddleSettings(bpy.types.PropertyGroup):
         default=True
     )
     
-    bake_metalness: bpy.props.BoolProperty(
-        name="Metalness",
-        description="Bake metalness channel",
-        default=True
+    # bake_metalness: bpy.props.BoolProperty(
+    #     name="Metalness",
+    #     description="Bake metalness channel",
+    #     default=True
+    # )
+    
+    # bake_ior: bpy.props.BoolProperty(
+    #     name="IOR",
+    #     description="Bake IOR (Index of Refraction) channel",
+    #     default=True
+    # )
+    
+    bake_glossy: bpy.props.BoolProperty(
+        name="Glossy",
+        description="Bake glossy channel",
+        default=False
     )
     
-    bake_ior: bpy.props.BoolProperty(
-        name="IOR",
-        description="Bake IOR (Index of Refraction) channel",
-        default=True
+    bake_transmission: bpy.props.BoolProperty(
+        name="Transmission",
+        description="Bake transmission channel",
+        default=False
     )
-    
+
+    # bake_ambient_occlusion: bpy.props.BoolProperty(
+    #     name="Ambient Occlusion",
+    #     description="Bake ambient occlusion channel",
+    #     default=False
+    # )
+
     bake_emission: bpy.props.BoolProperty(
         name="Emission",
         description="Bake emission channel",

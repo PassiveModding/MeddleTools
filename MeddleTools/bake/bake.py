@@ -31,6 +31,18 @@ def get_bake_label(context):
         return f"Run Bake (1 material)"
     else:
         return f"Run Bake ({material_count} materials)"
+    
+def get_bake_notices(context):
+    # Check if uv bake layer exists on all selected meshes, if not warn user
+    meshes = bake_utils.get_all_selected_meshes(context)
+    missing_uv_meshes = []
+    for mesh in meshes:
+        # Check if MeddlePackedUVs is the active render UV layer
+        if "MeddlePackedUVs" not in mesh.data.uv_layers:
+            missing_uv_meshes.append(mesh.name)
+    if len(missing_uv_meshes) > 0:
+        return f"Warning: The following meshes are missing 'MeddlePackedUVs' UV layer: {', '.join(missing_uv_meshes)}. UVMap will be used instead."
+    return None
 
 class RunBake(Operator):
     """Run the baking process for selected objects"""
@@ -38,7 +50,7 @@ class RunBake(Operator):
     bl_label = "Run Bake"
     bl_description = "Run the baking process for selected objects"
     bl_options = {'REGISTER', 'UNDO'}
-    
+        
     def update_progress(self, context, progress, message=None):
         """Update progress bar and force UI redraw"""
         wm = context.window_manager
@@ -262,18 +274,13 @@ class RunBake(Operator):
         bake_type = pass_config['bake_type']
         background_color = pass_config['background_color']
         bake_pass_filter = pass_config['pass_filter']
-        required_inputs = pass_config['required_inputs']
         alpha_mode = pass_config['alpha_mode']
         colorspace = pass_config['colorspace']
-        
-        # validate to clear linting errors
-        # Ensure required_inputs is str[]
-        assert isinstance(required_inputs, list)
         
         clear = True
         selected_to_active = False
         normal_space = "TANGENT"
-        bake_margin = bake_utils.calculate_bake_margin(max_image_size)        
+        bake_margin = 10     
         logger.info(f"Bake margin set to: {bake_margin} pixels")
 
         def create_bake_image(bake_name, background_color, width, height, alpha_mode, colorspace):
@@ -321,36 +328,34 @@ class RunBake(Operator):
             transform_func = conn[2]
             connection_map[source_socket] = (target_socket, transform_func)
         
-        # Now disconnect everything and reconnect only what's needed for baking
+        # Helper function to apply remapping for a connection
+        def apply_remapping(node, conn):
+            """Apply socket remapping and transforms for a connection"""
+            target_socket_name, transform_func = connection_map[conn['input_name']]
+            target_socket = node.inputs.get(target_socket_name)
+            
+            if target_socket:
+                if transform_func:
+                    # Call transform function to create and link nodes
+                    location = (conn['from_node'].location.x + 200, conn['from_node'].location.y)
+                    transform_node = transform_func(material, conn['from_socket'], target_socket, location)
+                    temp_nodes.append(transform_node)
+                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} via transform for {bake_name} bake")
+                else:
+                    # Direct connection
+                    material.node_tree.links.new(conn['from_socket'], target_socket)
+                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} for {bake_name} bake")
+        
+
         for node in material.node_tree.nodes:
             if node.type == 'BSDF_PRINCIPLED':
-                # Disconnect all inputs
-                for input_socket in node.inputs:
-                    for link in list(input_socket.links):
-                        material.node_tree.links.remove(link)
-                
-                # Reconnect only the required inputs for this bake pass
+                # Only process connections that need remapping
                 for conn in original_connections:
-                    if conn['input_name'] in required_inputs:
-                        # Check if this input has a remapping
-                        if conn['input_name'] in connection_map:
-                            target_socket_name, transform_func = connection_map[conn['input_name']]
-                            target_socket = node.inputs.get(target_socket_name)
-                            
-                            if target_socket:
-                                if transform_func:
-                                    # Call transform function to create and link nodes
-                                    location = (conn['from_node'].location.x + 200, conn['from_node'].location.y)
-                                    transform_node = transform_func(material, conn['from_socket'], target_socket, location)
-                                    temp_nodes.append(transform_node)
-                                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} via transform for {bake_name} bake")
-                                else:
-                                    # Direct connection
-                                    material.node_tree.links.new(conn['from_socket'], target_socket)
-                                    logger.info(f"Remapped {conn['input_name']} to {target_socket_name} for {bake_name} bake")
-                        else:
-                            # Normal connection - no remapping
-                            material.node_tree.links.new(conn['from_socket'], conn['input_socket'])         
+                    if conn['input_name'] in connection_map:
+                        # Disconnect the original connection that needs remapping
+                        for link in list(conn['input_socket'].links):
+                            material.node_tree.links.remove(link)
+                        apply_remapping(node, conn)         
         
         # ensure image is active
         material.node_tree.nodes.active = image_node        
@@ -397,11 +402,11 @@ class RunBake(Operator):
                 for input_socket in node.inputs:
                     for link in list(input_socket.links):
                         material.node_tree.links.remove(link)
-        
+            
         # Reconnect all original connections
         for conn in original_connections:
             material.node_tree.links.new(conn['from_socket'], conn['input_socket'])
-        
+            
         logger.info(f"Restored {len(original_connections)} original connection(s) after {bake_name} bake")
         
         return image_node
