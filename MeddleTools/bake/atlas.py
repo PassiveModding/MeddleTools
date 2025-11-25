@@ -151,6 +151,11 @@ class RunAtlas(Operator):
             else:
                 joined_mesh = group_meshes[0]
             
+            if len(material_group) == 1:
+                logger.info(f"Group {group_idx} has only one material, skipping atlasing")
+                atlas_meshes.append(joined_mesh)
+                continue
+            
             # Create atlas for this group
             atlas_name = f"Atlas_{joined_mesh.name}_{group_idx}" if len(material_groups) > 1 else f"Atlas_{joined_mesh.name}"
             atlas_material = self.create_texture_atlas(context, joined_mesh, atlas_name)
@@ -431,7 +436,14 @@ class RunAtlas(Operator):
         texture_types = atlas_config['texture_types']
         logger.info(f"Atlas texture types: {texture_types}")
         
-        material_info = self.analyze_material_sizes(materials, texture_types, joined_mesh.data)
+        # trim down texture types to only those that are actually used in the materials
+        used_texture_types = set()
+        for material in materials:
+            for tex_type in texture_types:
+                if bake_utils.find_texture_in_material(material, tex_type):
+                    used_texture_types.add(tex_type)
+
+        material_info = self.analyze_material_sizes(materials, used_texture_types, joined_mesh.data)
         atlas_layout = self.calculate_atlas_layout(material_info)
         atlas_width = atlas_layout['width']
         atlas_height = atlas_layout['height']
@@ -439,9 +451,9 @@ class RunAtlas(Operator):
         logger.info(f"Atlas resolution: {atlas_width}x{atlas_height}")
         self.report({'INFO'}, f"Atlas resolution: {atlas_width}x{atlas_height}")
         
-        atlas_images = self.create_atlas_images(atlas_name, atlas_width, atlas_height, texture_types)
-        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, texture_types)
-        
+        atlas_images = self.create_atlas_images(atlas_name, atlas_width, atlas_height, used_texture_types)
+        material_uv_mapping = self.copy_textures_to_atlas(materials, material_info, atlas_layout, atlas_images, used_texture_types)
+
         self.update_uvs_for_atlas(joined_mesh, material_uv_mapping)
         atlas_material = self.create_atlas_material(context, atlas_name, atlas_images)
         
