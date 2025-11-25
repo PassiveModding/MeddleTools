@@ -491,29 +491,12 @@ def map_mesh(material: bpy.types.Material, slots: List[bpy.types.MaterialSlot], 
     
     logger.info("Applying material %ss", material.name)
     
-    step_start = time.perf_counter()
-    setBackfaceCulling(material)
-    logger.info(f"[PROFILE]   setBackfaceCulling took {time.perf_counter() - step_start:.4f}s")
-    
-    step_start = time.perf_counter()
-    setPngConfig(material, cache_directory)
-    logger.info(f"[PROFILE]   setPngConfig took {time.perf_counter() - step_start:.4f}s")
-    
-    step_start = time.perf_counter()
-    setUvMapConfig(material)
-    logger.info(f"[PROFILE]   setUvMapConfig took {time.perf_counter() - step_start:.4f}s")
-    
-    step_start = time.perf_counter()
-    setGroupProperties(material)
-    logger.info(f"[PROFILE]   setGroupProperties took {time.perf_counter() - step_start:.4f}s")
-    
-    step_start = time.perf_counter()
-    setColorAttributes(material)
-    logger.info(f"[PROFILE]   setColorAttributes took {time.perf_counter() - step_start:.4f}s")
-    
-    step_start = time.perf_counter()
+    setBackfaceCulling(material)    
+    setPngConfig(material, cache_directory)    
+    setUvMapConfig(material)    
+    setGroupProperties(material)    
+    setColorAttributes(material)    
     setColorTableRamps(material)
-    logger.info(f"[PROFILE]   setColorTableRamps took {time.perf_counter() - step_start:.4f}s")
     
 @profile_function
 def setColorTableRamps(material: bpy.types.Material):
@@ -555,6 +538,15 @@ def setBackfaceCulling(material: bpy.types.Material):
 def setPngConfig(material: bpy.types.Material, cache_directory: str):
     node_tree = material.node_tree
     texture_nodes = [node for node in node_tree.nodes if node.type == 'TEX_IMAGE']
+    
+    if not texture_nodes:
+        return
+    
+    # Cache compiled regex patterns for array definitions
+    array_patterns = {
+        label: re.compile(array_def.file_name_pattern)
+        for label, array_def in png_custom_vertical_array_definitions.items()
+    }
 
     def resolve_image_path(label: str) -> str | None:
         # Custom vertical array path handling
@@ -565,8 +557,9 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
                 logger.debug("Array cache path %s does not exist.", array_cache_path)
                 return None
             try:
+                pattern = array_patterns[label]
                 for file_name in os.listdir(array_cache_path):
-                    if re.match(array_def.file_name_pattern, file_name):
+                    if pattern.match(file_name):
                         return path.join(array_cache_path, file_name)
             except Exception as e:
                 logger.warning("Error listing %s: %s", array_cache_path, e)
@@ -575,12 +568,10 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
 
         # Standard material property path
         if label not in material:
-            logger.debug("Node %s not found in material properties.", label)
             return None
         cache_path = bpy.path.native_pathsep(material[label])
         full_path = path.join(cache_directory, cache_path)
         if not path.exists(full_path):
-            logger.debug("Cache path %s does not exist.", full_path)
             return None
         return full_path
 
@@ -592,8 +583,12 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
             return entry.resolve(material)
         return entry
 
+    # Process all nodes
     for node in texture_nodes:
         label = node.label
+        if not label:
+            continue
+            
         full_path = resolve_image_path(label)
         if not full_path:
             continue
@@ -609,18 +604,17 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
 
         config = resolve_config(label)
         if not config:
-            logger.debug("No config found for node label %s. Using default settings.", label)
+            # Apply defaults
             image.colorspace_settings.name = 'Non-Color'
             image.alpha_mode = 'CHANNEL_PACKED'
             node.interpolation = 'Linear'
             node.extension = 'REPEAT'
-            continue
-
-        # Apply the configuration
-        image.colorspace_settings.name = config.colorSpace
-        image.alpha_mode = config.alphaMode
-        node.interpolation = config.interpolation
-        node.extension = config.extension
+        else:
+            # Apply the configuration
+            image.colorspace_settings.name = config.colorSpace
+            image.alpha_mode = config.alphaMode
+            node.interpolation = config.interpolation
+            node.extension = config.extension
 
 @profile_function
 def setUvMapConfig(material: bpy.types.Material):
