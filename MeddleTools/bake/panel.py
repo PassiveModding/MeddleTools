@@ -8,20 +8,6 @@ from .join_meshes import JoinMeshes, get_join_label
 from . import bake_utils
 from . import bake
 
-class MEDDLE_UL_MaterialBakeList(bpy.types.UIList):
-    """UI List for displaying materials with bake settings"""
-    
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
-        if self.layout_type in {'DEFAULT', 'COMPACT'}:
-            row = layout.row(align=True)
-            row.label(text=item.material_name, icon='MATERIAL')
-            row.prop(item, "image_width", text="W")
-            row.prop(item, "image_height", text="H")
-            row.prop(item, "atlas_group", text="Group")
-        elif self.layout_type == 'GRID':
-            layout.alignment = 'CENTER'
-            layout.label(text=item.material_name, icon='MATERIAL')
-
 class MEDDLE_OT_InitMaterialSettings(bpy.types.Operator):
     """Initialize bake settings for materials without settings"""
     bl_idname = "meddle.init_material_settings"
@@ -175,10 +161,21 @@ class MeddleBakePanel(bpy.types.Panel):
         
         # Display existing settings
         if existing_settings:
+            # display header
+            row = box.row(align=True)
+            split = row.split(factor=0.45, align=True)
+            split.label(text="Material", icon='MATERIAL')
+            props_row = split.row(align=True)
+            props_row.label(text="Width")
+            props_row.label(text="Height")
+            props_row.label(text="Atlas Group")
+
             for mat_setting in existing_settings:
                 row = box.row(align=True)
                 split = row.split(factor=0.45, align=True)
-                split.label(text=mat_setting.material_name, icon='MATERIAL')
+                trimmed_material_name = mat_setting.material_name.replace("BAKE_Meddle", "").strip()
+                
+                split.label(text=trimmed_material_name, icon='MATERIAL')
                 props_row = split.row(align=True)
                 props_row.prop(mat_setting, "image_width", text="W")
                 props_row.prop(mat_setting, "image_height", text="H")

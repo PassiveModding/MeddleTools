@@ -1,5 +1,5 @@
 from .bake import RunBake
-from .panel import MeddleBakePanel, MEDDLE_UL_MaterialBakeList, MEDDLE_OT_InitMaterialSettings, MEDDLE_OT_ClearMaterialSettings
+from .panel import MeddleBakePanel, MEDDLE_OT_InitMaterialSettings, MEDDLE_OT_ClearMaterialSettings
 from .atlas import RunAtlas
 from .export_fbx import ExportFBX
 from .create_copy_for_baking import CreateCopyForBaking
@@ -8,7 +8,6 @@ from .join_meshes import JoinMeshes
 
 classes = [
 	RunBake,
-	MEDDLE_UL_MaterialBakeList,
 	MEDDLE_OT_InitMaterialSettings,
 	MEDDLE_OT_ClearMaterialSettings,
 	MeddleBakePanel,
