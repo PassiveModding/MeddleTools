@@ -89,7 +89,7 @@ texture_node_configs: dict[str, Union[TextureNodeConfig, ConditionalTextureConfi
             (
                 # Should fix the issue of teeth being shown when the UV wraps in 'REPEAT' mode. (Male viera freckle facial feature has uvs that sit outside 0-1 range)
                 # Extend seems more correct
-                material_condition_equals(ShaderPackage='skin.shpk'),
+                material_condition_equals(ShaderPackage='skin.shpk', GetMaterialValue='GetMaterialValueFace'),
                 TextureNodeConfig(
                     colorSpace='sRGB',
                     alphaMode='CHANNEL_PACKED',
