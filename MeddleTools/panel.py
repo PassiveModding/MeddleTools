@@ -20,7 +20,6 @@ class MeddleImportPanel(bpy.types.Panel):
     bl_category = "Meddle Tools"
     
     blender_import: bpy.props.BoolProperty(name="Blender Import", default=True)
-    
 
     def draw(self, context):
         if context is None:
@@ -181,27 +180,13 @@ class MeddleUtilsPanel(bpy.types.Panel):
 
 class MeddleCreditPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleVersionPanel"
-    bl_label = "Credits & Version"
+    bl_label = "Credits"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Meddle Tools"
     
     def draw(self, context):
         layout = self.layout
-        
-        # section = layout.box()
-        # col = section.column()
-        # row = col.row()
-        # row.label(text=f"Version: {version.current_version}")
-        # row = col.row()
-        # row.label(text=f"Latest Release ({version.latest_version})")
-        # row = col.row()
-        # if version.latest_version_name is not None:
-        #     row.label(text=f"{version.latest_version_name}")
-        # else:
-        #     row.label(text="Unknown")
-        
-        # layout.separator()
         
         # credits
         box = layout.box()
@@ -215,6 +200,8 @@ class MeddleCreditPanel(bpy.types.Panel):
         row.label(text="Special thanks to:")
         row = col.row()
         row.label(text="  - SkulblakaDrotningu for Lizzer Tools Meddle")
+        row = col.row()
+        row.label(text="  - Kajupe for FFGear")
     
 class MeddleHeaderPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleHeaderPanel"
@@ -237,20 +224,16 @@ class MeddleHeaderPanel(bpy.types.Panel):
         row.operator("wm.url_open", text="Github", icon="HELP").url = repo_url
         row.operator("wm.url_open", text="Issues", icon="BOOKMARKS").url = repo_issues_url
         
-        # if version.latest_version != "Unknown" and version.current_version != "Unknown":
-        #     if version.latest_version != version.current_version:
-        #         box = layout.box()
-        #         col = box.column()
-        #         row = col.row()
-        #         row.label(text=f"Current version: {version.current_version}")
-        #         row = col.row()
-        #         row.label(text=f"New version available: {version.latest_version}")
-        #         row = col.row()
-        #         row.operator("wm.url_open", text="Download").url = version.GITHUB_RELEASE_PAGE_URL
-        #         row = col.row()
-        #         row.operator(version.MeddleToolsInstallUpdate.bl_idname, text="Install Automatically", icon='FILE_TICK')
-        #         row = col.row()
-        #         row.label(text=f"{version.latest_version_name}")
+        if version.attempted_version_check is True and version.latest_version != "Unknown" and version.current_version != "Unknown":
+            if version.latest_version != version.current_version:
+                box = layout.box()
+                col = box.column()
+                row = col.row()
+                row.label(text=f"Current version: {version.current_version}")
+                row = col.row()
+                row.label(text=f"New version available: {version.latest_version}")
+                row = col.row()
+                row.label(text="Please update via Blender Preferences")
                 
                 
 classes = [

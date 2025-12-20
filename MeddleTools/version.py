@@ -18,7 +18,31 @@ extension_directory = extension_parts[1]
 EXTENSIONS_PATH = bpy.utils.user_resource('EXTENSIONS', path=extension_directory)
 
 current_version = "Unknown"  # Holds the current version string
+latest_version = "Unknown"   # Holds the latest version string from the repo
+attempted_version_check = False  # Flag to prevent concurrent update checks
 
+def updateLatestRelease():
+    try:
+        global current_version
+        global attempted_version_check
+        global latest_version
+        if attempted_version_check:
+            return
+        
+        attempted_version_check = True
+        response = requests.get("https://raw.githubusercontent.com/PassiveModding/MeddleTools/main/repo.json", timeout=5)
+        response.raise_for_status()
+        repo_data = response.json()
+        latest_version = repo_data.get("version", "Unknown")
+        if latest_version != "Unknown":
+            logger.info(f"Latest version available: {latest_version}")
+            if latest_version != current_version:
+                logger.info(f"A new version of Meddle Tools is available! Current: {current_version}, Latest: {latest_version}")
+        else:
+            logger.warning("Could not determine the latest version from the repository.")
+
+    except requests.RequestException as e:
+        logger.error(f"Failed to check for updates: {e}")
 
 def updateCurrentRelease():
     global current_version
@@ -38,8 +62,12 @@ def updateCurrentRelease():
 
 def runInit():
     try:
-        updateCurrentRelease()
+        updateCurrentRelease()        
         if current_version is not None:
             logger.info(f"Current version: {current_version}")
     except Exception as e:
         logger.error(f"Failed to update current release: {e}")
+    try:
+        updateLatestRelease()
+    except Exception as e:
+        logger.error(f"Failed to update latest release: {e}")

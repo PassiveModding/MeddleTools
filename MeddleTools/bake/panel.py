@@ -92,7 +92,7 @@ class MEDDLE_OT_ClearMaterialSettings(bpy.types.Operator):
 
 class MeddleBakePanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_MeddleBakePanel"
-    bl_label = "Baking"
+    bl_label = "Bake Utils"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Meddle Tools"
