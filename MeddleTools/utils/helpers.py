@@ -1,4 +1,12 @@
 import bpy
+import mathutils
+import logging
+
+logger = logging.getLogger(__name__)
+try:
+    logger.addHandler(logging.NullHandler())
+except Exception:
+    pass
 
 def safe_deselect_all_objects(context: bpy.types.Context):
     try:
@@ -66,3 +74,30 @@ def cleanup_imported_objects(imported_objects):
                 bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:
             pass
+
+def toBlenderColor(color_values:list[float], include_alpha:bool=True) -> tuple[float, float, float, float]|tuple[float, float, float]:
+    """Converts a color in linear rec.709 to the format expected by Blender, in the working color space.
+
+    Args:
+        color_values (list[float]): List of values making up the rec.709 color. Four values -> RGBA. Will get padded or trimmed if it's too short/long.
+        include_alpha (bool, optional): Whether or not the output tuple should include the fourth value Alpha. Useful when assigning the color to things like lights. Defaults to True.
+
+    Returns:
+        tuple[float, float, float, float]: A tuple consisting of R, G, B and A, converted to scene linear colors. Ready to feed to a Color Ramp or similar. A can be disabled with include_alpha=False.
+    """
+    num_values = len(color_values)
+    alpha = 1.0
+    if num_values > 4:
+        logger.warning(f"The function toBlenderColor was given a list of values longer than 4. Anything past that point will be trimmed away. Given list: {color_values}")
+        color_values = color_values[:4]
+    if num_values == 4:
+        # There's an alpha value which needs to be separated before colorspace conversion
+        alpha = color_values.pop()
+    while len(color_values) < 3: # Unsure in which cases this would be needed, but just to be safe, make sure there are three color values
+        color_values.append(1.0)
+    rec709_colors = mathutils.Color(color_values)
+    working_space_colors = rec709_colors.from_rec709_linear_to_scene_linear()
+    if include_alpha:
+        return (working_space_colors.r, working_space_colors.g, working_space_colors.b, alpha)
+    else:
+        return (working_space_colors.r, working_space_colors.g, working_space_colors.b)

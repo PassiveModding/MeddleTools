@@ -1,4 +1,5 @@
 import bpy
+from utils import helpers
 
 def setupLight(light: bpy.types.Object):
     if light is None:
@@ -13,7 +14,7 @@ def setupLight(light: bpy.types.Object):
             newLight = bpy.data.lights.new(name=light.name, type='SUN')
             newLight.energy = light["HDRIntensity"]
             rgbCol = light["ColorRGB"]
-            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]
+            newLight.color = helpers.toBlenderColor([rgbCol["X"], rgbCol["Y"], rgbCol["Z"]], include_alpha=False)
             
             light.data = newLight  # replace the light data with the new one
             # set rotation to quaternion identity
@@ -27,7 +28,7 @@ def setupLight(light: bpy.types.Object):
             newLight.size = light["ShadowNear"]
             newLight.energy = light["HDRIntensity"]
             rgbCol = light["ColorRGB"]
-            newLight.color = [rgbCol["X"], rgbCol["Y"], rgbCol["Z"]]                   
+            newLight.color = helpers.toBlenderColor([rgbCol["X"], rgbCol["Y"], rgbCol["Z"]], include_alpha=False)                   
             newLight.use_custom_distance = True
             newLight.cutoff_distance = light["Range"]
             lightData.use_shadow = False
