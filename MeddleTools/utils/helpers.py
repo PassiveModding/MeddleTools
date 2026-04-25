@@ -85,18 +85,36 @@ def toBlenderColor(color_values:list[float], include_alpha:bool=True) -> tuple[f
     Returns:
         tuple[float, float, float, float]: A tuple consisting of R, G, B and A, converted to scene linear colors. Ready to feed to a Color Ramp or similar. A can be disabled with include_alpha=False.
     """
+    # It's possible we don't get a list, but an IDPropertyArray or something which does not have .pop(), but it can be converted to a list easily.
+    if not hasattr(color_values, 'pop') and hasattr(color_values, 'to_list'):
+        color_values = color_values.to_list()
+    else:
+        try:
+            list(color_values)
+        except:
+            logger.error(f"The function toBlenderColor got some object that it either isn't a list or it can't convert to a list: {color_values}. Returning a bright pink so it hopefully gets spotted and reported.")
+            if include_alpha:
+                return (1.0, 0.0, 1.0, 1.0)
+            else:
+                return (1.0, 0.0, 1.0)
+    
     num_values = len(color_values)
     alpha = 1.0
+    
     if num_values > 4:
         logger.warning(f"The function toBlenderColor was given a list of values longer than 4. Anything past that point will be trimmed away. Given list: {color_values}")
         color_values = color_values[:4]
+    
     if num_values == 4:
         # There's an alpha value which needs to be separated before colorspace conversion
         alpha = color_values.pop()
+    
     while len(color_values) < 3: # Unsure in which cases this would be needed, but just to be safe, make sure there are three color values
         color_values.append(1.0)
+    
     rec709_colors = mathutils.Color(color_values)
     working_space_colors = rec709_colors.from_rec709_linear_to_scene_linear()
+
     if include_alpha:
         return (working_space_colors.r, working_space_colors.g, working_space_colors.b, alpha)
     else:
