@@ -1,5 +1,5 @@
 import bpy
-from utils import helpers
+from .utils import helpers
 
 def setupLight(light: bpy.types.Object):
     if light is None:
