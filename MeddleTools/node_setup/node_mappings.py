@@ -5,6 +5,7 @@ import os.path as path
 import re
 import logging
 from typing import Callable, List, Tuple, Union, Any
+from ..utils import helpers
 
 logger = logging.getLogger(__name__)
 try:
@@ -29,11 +30,7 @@ class ColorMapping:
         
         group_input = group_node.inputs[self.field_name]
         if group_input.type == 'RGBA':
-            # pad to 4 values
-            if len(prop_value) == 3:
-                prop_value = (*prop_value, 1.0)
-            if len(prop_value) == 4:
-                group_input.default_value = prop_value
+            group_input.default_value = helpers.toBlenderColor(prop_value)
         else:
             logger.debug("Unsupported field type %s for %s", group_input.type, self.field_name)
 
@@ -55,6 +52,7 @@ class ColorHdrMapping:
             logger.debug("Field %s not found in group node inputs.", self.field_magnitude)
             return
         
+        prop_value = helpers.toBlenderColor(prop_value) # Unsure how the HDR stuff works but I'm guessing here would be an OK place to to colorspace corrections?
         field_input = group_node.inputs[self.field_name]
         field_magnitude_input = group_node.inputs[self.field_magnitude]
         
@@ -300,7 +298,7 @@ class ColorTableRampLookup:
             pos = i / len(set)
             if self.rowPropName not in row:
                 raise Exception(f"Row property {self.rowPropName} not found in row")
-            row_values = padRgbaValues(getValuesForType(row, self.rowPropName, self.rowPropType))
+            row_values = helpers.toBlenderColor(getValuesForType(row, self.rowPropName, self.rowPropType))
             if i == 0:
                 colorRamp.color_ramp.elements[0].position = pos
                 colorRamp.color_ramp.elements[0].color = row_values
@@ -333,7 +331,7 @@ class PackedColorTableRampLookup:
                 values = getValuesForType(row, rowPropName, rowPropType)
                 for val in values:
                     row_values.append(val)
-            row_values = padRgbaValues(row_values)
+            row_values = helpers.toBlenderColor(row_values)
             try:
                 if i == 0:
                     colorRamp.color_ramp.elements[0].position = i / len(set)
