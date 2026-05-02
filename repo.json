@@ -1,5 +1,5 @@
 {
-    "version": "0.1.8",
+    "version": "0.1.9",
     "blocklist": [],
     "data": [
         {
@@ -7,7 +7,7 @@
             "id": "meddle_tools",
             "name": "Meddle Tools",
             "tagline": "Automatically setup FFXIV Meddle shaders and objects in Blender",
-            "version": "0.1.8",
+            "version": "0.1.9",
             "type": "add-on",
             "maintainer": "PassiveModding",
             "license": [
@@ -24,9 +24,9 @@
                 "Import-Export",
                 "3D-View"
             ],
-            "archive_url": "https://github.com/PassiveModding/MeddleTools/releases/download/0.1.8/MeddleTools-0.1.8.zip",
-            "archive_size": 778365,
-            "archive_hash": "sha256:bc65f72231996b4244e99c60605d3abcd48b9907b788dbfca26d5173a76363a0"
+            "archive_url": "https://github.com/PassiveModding/MeddleTools/releases/download/0.1.9/MeddleTools-0.1.9.zip",
+            "archive_size": 777606,
+            "archive_hash": "sha256:e958ddc6b2e22f4f036046d17bf0ccc30846c33f9057cf68ed8627936dc338fd"
         }
     ]
 }
