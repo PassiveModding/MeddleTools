@@ -11,25 +11,25 @@ from .delete_empty_vertex_groups import DeleteEmptyVertexGroups
 from .join_meshes_to_parent import JoinMeshesToParent
 from .delete_unused_uv_maps import DeleteUnusedUvMaps
 from .remove_bones_by_prefix import RemoveBonesByPrefix
-from .set_render_defaults import (SetCyclesDefaults, SetCameraCulling)
+from .set_render_defaults import SetCyclesDefaults, SetCameraCulling
 from .reparent_to_empty import ReparentToEmpty
 
 
 classes = [
-	FindProperties,
-	BoostLights,
-	JoinByMaterial,
-	JoinByDistance,
-	PurgeUnused,
-	AddVoronoiTexture,
-	CleanBoneHierarchy,
-	ImportAnimationGLTF,
-	DeleteEmptyVertexGroups,
-	JoinMeshesToParent,
-	DeleteUnusedUvMaps,
-	RemoveBonesByPrefix,
-	SetCyclesDefaults,
-	SetCameraCulling,
-	InstanceMeshes,
-	ReparentToEmpty
+    FindProperties,
+    BoostLights,
+    JoinByMaterial,
+    JoinByDistance,
+    PurgeUnused,
+    AddVoronoiTexture,
+    CleanBoneHierarchy,
+    ImportAnimationGLTF,
+    DeleteEmptyVertexGroups,
+    JoinMeshesToParent,
+    DeleteUnusedUvMaps,
+    RemoveBonesByPrefix,
+    SetCyclesDefaults,
+    SetCameraCulling,
+    InstanceMeshes,
+    ReparentToEmpty,
 ]

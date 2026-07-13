@@ -7,13 +7,13 @@ from .create_uv_bake_layers import CreateUVBakeLayers
 from .join_meshes import JoinMeshes
 
 classes = [
-	RunBake,
-	MEDDLE_OT_InitMaterialSettings,
-	MEDDLE_OT_ClearMaterialSettings,
-	MeddleBakePanel,
-	RunAtlas,
-	ExportFBX,
-	CreateCopyForBaking,
-	CreateUVBakeLayers,
-	JoinMeshes,
+    RunBake,
+    MEDDLE_OT_InitMaterialSettings,
+    MEDDLE_OT_ClearMaterialSettings,
+    MeddleBakePanel,
+    RunAtlas,
+    ExportFBX,
+    CreateCopyForBaking,
+    CreateUVBakeLayers,
+    JoinMeshes,
 ]

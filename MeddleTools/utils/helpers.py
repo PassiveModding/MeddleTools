@@ -8,6 +8,7 @@ try:
 except Exception:
     pass
 
+
 def safe_deselect_all_objects(context: bpy.types.Context):
     try:
         for ob in context.view_layer.objects:
@@ -75,7 +76,10 @@ def cleanup_imported_objects(imported_objects):
         except Exception:
             pass
 
-def toBlenderColor(color_values:list[float], include_alpha:bool=True) -> tuple[float, float, float, float]|tuple[float, float, float]:
+
+def toBlenderColor(
+    color_values: list[float], include_alpha: bool = True
+) -> tuple[float, float, float, float] | tuple[float, float, float]:
     """Converts a color in linear rec.709 to the format expected by Blender, in the working color space.
 
     Args:
@@ -91,27 +95,33 @@ def toBlenderColor(color_values:list[float], include_alpha:bool=True) -> tuple[f
     else:
         try:
             list(color_values)
-        except:
-            logger.error(f"The function toBlenderColor got some object that it either isn't a list or it can't convert to a list: {color_values}. Returning a bright pink so it hopefully gets spotted and reported.")
+        except Exception:
+            logger.error(
+                f"The function toBlenderColor got some object that it either isn't a list or it can't convert to a list: {color_values}. Returning a bright pink so it hopefully gets spotted and reported."
+            )
             if include_alpha:
                 return (1.0, 0.0, 1.0, 1.0)
             else:
                 return (1.0, 0.0, 1.0)
-    
+
     num_values = len(color_values)
     alpha = 1.0
-    
+
     if num_values > 4:
-        logger.warning(f"The function toBlenderColor was given a list of values longer than 4. Anything past that point will be trimmed away. Given list: {color_values}")
+        logger.warning(
+            f"The function toBlenderColor was given a list of values longer than 4. Anything past that point will be trimmed away. Given list: {color_values}"
+        )
         color_values = color_values[:4]
-    
+
     if num_values == 4:
         # There's an alpha value which needs to be separated before colorspace conversion
         alpha = color_values.pop()
-    
-    while len(color_values) < 3: # Unsure in which cases this would be needed, but just to be safe, make sure there are three color values
+
+    while (
+        len(color_values) < 3
+    ):  # Unsure in which cases this would be needed, but just to be safe, make sure there are three color values
         color_values.append(1.0)
-    
+
     rec709_colors = mathutils.Color(color_values)
     working_space_colors = rec709_colors.from_rec709_linear_to_scene_linear()
 

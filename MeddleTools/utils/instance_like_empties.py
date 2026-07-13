@@ -1,11 +1,6 @@
-from hmac import digest
-import bpy
 import logging
 from bpy.types import Operator
 from collections import defaultdict
-from . import helpers
-import re
-from hashlib import sha1
 
 
 # Module logger - operators still use self.report for user-facing messages
@@ -16,8 +11,10 @@ try:
 except Exception:
     pass
 
+
 class InstanceMeshes(Operator):
     """Finds objects with identical children and instances them."""
+
     bl_idname = "object.instance_meshes_2"
     bl_label = "Instance Meshes 2"
     bl_options = {'REGISTER', 'UNDO'}
@@ -38,12 +35,11 @@ class InstanceMeshes(Operator):
         # Instance RefObj under Empty and Empty2
         # Scene -> Empty -> Obj1
         # Scene -> Empty2 -> Obj1
-        
+
         selected_parents = defaultdict(list)
         for obj in context.selected_objects:
             # Only consider empties with children
             if obj.type == 'EMPTY' and obj.children:
                 selected_parents[obj].extend(obj.children)
-        
 
         return {'FINISHED'}

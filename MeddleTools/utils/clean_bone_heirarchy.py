@@ -11,12 +11,15 @@ try:
 except Exception:
     pass
 
+
 class CleanBoneHierarchy(Operator):
     """Remove unused bones from armatures that don't affect any vertices"""
+
     bl_idname = "meddle.clean_bone_hierarchy"
     bl_label = "Clean Bone Hierarchy"
     bl_description = "Remove unused bones from selected armatures that don't affect any vertices"
     bl_options = {'REGISTER', 'UNDO'}
+
     def execute(self, context):
         # Determine target armatures: prefer selected, fallback to active armature
         armatures = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']

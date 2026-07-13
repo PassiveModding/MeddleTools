@@ -2,7 +2,6 @@ import bpy
 import logging
 from bpy.types import Operator
 from collections import defaultdict
-from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -12,10 +11,12 @@ try:
 except Exception:
     pass
 
+
 class ReparentToEmpty(Operator):
     """For each selected object, if it is the only child of an empty, remove the empty and replace it with the object
     i.e. scene -> empty -> object  becomes  scene -> object
     """
+
     bl_idname = "meddle.reparent_to_empty"
     bl_label = "Reparent to Empty"
     bl_description = "Reparent selected objects to their empty parent (if applicable)"
