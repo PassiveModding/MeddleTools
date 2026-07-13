@@ -7,6 +7,8 @@ fill in the zip size and hash. It can also be run locally to preview a bump:
 
     python scripts/set_version.py 0.2.0
     python scripts/set_version.py 0.2.0 --archive MeddleTools-0.2.0.zip
+
+Only updates the first entry in repo.json's "data" array
 """
 
 import argparse
@@ -14,6 +16,7 @@ import hashlib
 import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,13 +34,28 @@ def stamp_manifest(version: str) -> None:
     print(f"{MANIFEST.relative_to(ROOT)}: version = {version}")
 
 
+def read_manifest_blender_version_min() -> str | None:
+    with open(MANIFEST, 'rb') as f:
+        manifest = tomllib.load(f)
+    return manifest.get("blender_version_min")
+
+
 def stamp_repo_json(version: str, archive: Path | None) -> None:
     repo = json.loads(REPO_JSON.read_text(encoding="utf-8"))
     repo["version"] = version
 
+    # data[0] is the current release; legacy entries pinned for older Blender versions.
     entry = repo["data"][0]
     entry["version"] = version
     entry["archive_url"] = DOWNLOAD_URL.format(version=version)
+
+    blender_version_min = read_manifest_blender_version_min()
+    if blender_version_min and entry.get("blender_version_min") != blender_version_min:
+        print(
+            f"{REPO_JSON.relative_to(ROOT)}: blender_version_min "
+            f"{entry.get('blender_version_min')} -> {blender_version_min} (synced from manifest)"
+        )
+        entry["blender_version_min"] = blender_version_min
 
     if archive is not None:
         data = archive.read_bytes()

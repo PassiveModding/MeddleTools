@@ -216,8 +216,18 @@ class MeddleHeaderPanel(bpy.types.Panel):
                 row.label(text=f"Current version: {version.current_version}")
                 row = col.row()
                 row.label(text=f"New version available: {version.latest_version}")
-                row = col.row()
-                row.label(text="Please update via Blender Preferences")
+                if version.required_blender_version is not None:
+                    # The update won't appear in Preferences on this Blender;
+                    # explain why instead of pointing users at a dead end.
+                    row = col.row()
+                    row.label(text=f"Requires Blender {version.required_blender_version}+", icon='ERROR')
+                    row = col.row()
+                    row.label(text="Upgrade Blender to receive updates,")
+                    row = col.row()
+                    row.label(text=f"or keep using {version.current_version}")
+                else:
+                    row = col.row()
+                    row.label(text="Please update via Blender Preferences")
 
 
 classes = [
