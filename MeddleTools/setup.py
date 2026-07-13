@@ -22,9 +22,8 @@ def register():
 
 
 def unregister():
+    version.shutdown()
     bpy.types.TOPBAR_MT_file_import.remove(gltf_import.menu_func_import)
-
-    # Unregister property groups
 
     for cls in classes:
         bpy.utils.unregister_class(cls)
