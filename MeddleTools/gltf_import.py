@@ -4,6 +4,7 @@ from os import path
 from .node_setup import node_configs
 from . import blend_import
 from . import lighting
+from . import preferences
 
 
 def getRootObject(obj: bpy.types.Object) -> bpy.types.Object:
@@ -94,95 +95,9 @@ class ModelImport(bpy.types.Operator):
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
 
-    # Copied from the built-in glTF 2.0 importer
-    import_shading: bpy.props.EnumProperty(
-        name="Shading",
-        items=(("NORMALS", "Use Normal Data", ""), ("FLAT", "Flat Shading", ""), ("SMOOTH", "Smooth Shading", "")),
-        description="How normals are computed during import",
-        default="NORMALS",
-    )
-
-    export_import_convert_lighting_mode: bpy.props.EnumProperty(
-        name='Lighting Mode',
-        items=(
-            ('SPEC', 'Standard', 'Physically-based glTF lighting units (cd, lx, nt)'),
-            ('COMPAT', 'Unitless', 'Non-physical, unitless lighting. Useful when exposure controls are not available'),
-            ('RAW', 'Raw (Deprecated)', 'Blender lighting strengths with no conversion'),
-        ),
-        description='Optional backwards compatibility for non-standard render engines. Applies to lights',
-        default='SPEC',
-    )
-
-    merge_vertices: bpy.props.BoolProperty(
-        name='Merge Vertices',
-        description=(
-            'The glTF format requires discontinuous normals, UVs, and '
-            'other vertex attributes to be stored as separate vertices, '
-            'as required for rendering on typical graphics hardware. '
-            'This option attempts to combine co-located vertices where possible. '
-            'Currently cannot combine verts with different normals'
-        ),
-        default=False,
-    )
-
-    import_merge_material_slots: bpy.props.BoolProperty(
-        name='Merge Material Slot when possible', description='Merge material slots when possible', default=True
-    )
-
-    bone_heuristic: bpy.props.EnumProperty(
-        name="Bone Dir",
-        items=(
-            (
-                "BLENDER",
-                "Blender (best for import/export round trip)",
-                "Good for re-importing glTFs exported from Blender, "
-                "and re-exporting glTFs to glTFs after Blender editing. "
-                "Bone tips are placed on their local +Y axis (in glTF space)",
-            ),
-            (
-                "TEMPERANCE",
-                "Temperance (average)",
-                "Decent all-around strategy. "
-                "A bone with one child has its tip placed on the local axis "
-                "closest to its child",
-            ),
-            (
-                "FORTUNE",
-                "Fortune (may look better, less accurate)",
-                "Might look better than Temperance, but also might have errors. "
-                "A bone with one child has its tip placed at its child's root. "
-                "Non-uniform scalings may get messed up though, so beware",
-            ),
-        ),
-        description="Heuristic for placing bones. Tries to make bones pretty",
-        default="TEMPERANCE",
-    )
-
-    guess_original_bind_pose: bpy.props.BoolProperty(
-        name='Guess Original Bind Pose',
-        description=(
-            'Try to guess the original bind pose for skinned meshes from '
-            'the inverse bind matrices. '
-            'When off, use default/rest pose as bind pose'
-        ),
-        default=True,
-    )
-
-    disable_bone_shape: bpy.props.BoolProperty(
-        name='Disable Bone Shape', description='Do not create bone shapes', default=False
-    )
-
-    bone_shape_scale_factor: bpy.props.FloatProperty(
-        name='Bone Shape Scale', description='Scale factor for bone shapes', default=1.0
-    )
-
-    import_pack_images: bpy.props.BoolProperty(
-        name='Pack Images', description='Pack all images into .blend file', default=True
-    )
-
-    import_select_created_objects: bpy.props.BoolProperty(
-        name='Select Imported Objects', description='Select created objects at the end of the import', default=True
-    )
+    # The glTF import options (import_shading, bone_heuristic, ...) are defined
+    # once in preferences.gltf_import_option_defs() and injected below the
+    # class body, so the operator and the add-on preferences stay in sync.
 
     def draw(self, context):
         layout = self.layout
@@ -218,23 +133,20 @@ class ModelImport(bpy.types.Operator):
             body.prop(self, 'import_select_created_objects')
 
     def get_gltf_import_kwargs(self):
-        keys = (
-            'import_shading',
-            'export_import_convert_lighting_mode',
-            'merge_vertices',
-            'import_merge_material_slots',
-            'bone_heuristic',
-            'guess_original_bind_pose',
-            'disable_bone_shape',
-            'bone_shape_scale_factor',
-            'import_pack_images',
-            'import_select_created_objects',
-        )
-        return {key: getattr(self, key) for key in keys}
+        return {key: getattr(self, key) for key in preferences.GLTF_IMPORT_OPTION_KEYS}
 
     def invoke(self, context, event):
         if context is None:
             return {'CANCELLED'}
+
+        # Seed options from the add-on preferences. Options the user already
+        # changed this session (remembered by Blender as last-used operator
+        # properties) win over the preference defaults.
+        prefs = preferences.get_addon_preferences(context)
+        if prefs is not None:
+            for key in preferences.GLTF_IMPORT_OPTION_KEYS:
+                if not self.properties.is_property_set(key):
+                    setattr(self, key, getattr(prefs, key))
 
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
@@ -441,6 +353,12 @@ class ModelImport(bpy.types.Operator):
                 print(f"Error setting collection for {obj.name}: {e}")
 
         return len(imported_meshes)
+
+
+# Inject the shared glTF import option properties (single definition in
+# preferences.py) so register_class picks them up on this operator too.
+for _name, _prop in preferences.gltf_import_option_defs().items():
+    ModelImport.__annotations__[_name] = _prop
 
 
 class ApplyToSelected(bpy.types.Operator):
