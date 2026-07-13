@@ -9,6 +9,7 @@ from . import bake
 
 classes = [] + gltf_import.classes + panel.classes + blend_import.classes + utils.classes + bake.classes
 
+
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)

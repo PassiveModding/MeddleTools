@@ -12,13 +12,15 @@ try:
 except Exception:
     pass
 
+
 class ImportAnimationGLTF(Operator):
     """Import animation GLTF to the selected armature"""
+
     bl_idname = "meddle.import_animation_gltf"
     bl_label = "Import Animation GLTF"
     bl_description = "Import animation from a GLTF file to the selected armature"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     @classmethod
     def poll(cls, context):
         """Enable only when an Armature is selected (active or among selection)."""
@@ -30,16 +32,16 @@ class ImportAnimationGLTF(Operator):
             return any(obj and getattr(obj, 'type', None) == 'ARMATURE' for obj in selected)
         except Exception:
             return False
-    
+
     # File browser properties
     files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
     directory: bpy.props.StringProperty(subtype='DIR_PATH')
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
-    
+
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
-    
+
     def execute(self, context):
         """Execute the animation import process"""
         # Check if an armature is selected
@@ -51,29 +53,29 @@ class ImportAnimationGLTF(Operator):
             selected_armatures = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']
             if selected_armatures:
                 target_armature = selected_armatures[0]
-        
+
         if not target_armature:
             self.report({'ERROR'}, "No armature selected. Please select an armature to import animation to.")
             return {'CANCELLED'}
-        
+
         # Make sure only one file is selected
         if len(self.files) != 1:
             self.report({'ERROR'}, "Please select exactly one GLTF file to import.")
             return {'CANCELLED'}
 
         gltf_file_path = os.path.join(self.directory, self.files[0].name)
-        
+
         # Store temp existing selections
         original_selected = context.selected_objects.copy()
         original_active = context.active_object
-        
+
         try:
             # Clear selection before import (safe)
             helpers.safe_deselect_all_objects(context)
-            
+
             # Import using same logic as gltf_import.py - check import mode first
             logger.info("Importing animation from GLTF: %s", gltf_file_path)
-            
+
             # Use the same import mode as the model import settings
             # if context.scene.meddle_settings.gltf_bone_dir == 'BLENDER':
             #     bpy.ops.import_scene.gltf(filepath=gltf_file_path, disable_bone_shape=True)
@@ -81,37 +83,37 @@ class ImportAnimationGLTF(Operator):
             # else:
             #     # Default fallback to BLENDER mode
             #     bpy.ops.import_scene.gltf(filepath=gltf_file_path, disable_bone_shape=True)
-            
+
             bpy.ops.import_scene.gltf(filepath=gltf_file_path, bone_heuristic='TEMPERANCE')
-            
+
             # Find imported armatures
             imported_armatures = [obj for obj in context.selected_objects if obj.type == 'ARMATURE']
             imported_objects = context.selected_objects.copy()
-            
+
             if not imported_armatures:
                 self.report({'WARNING'}, "No armatures found in the imported GLTF file")
                 # Clean up imported objects
                 helpers.cleanup_imported_objects(imported_objects)
                 return {'CANCELLED'}
-            
+
             # Hide the imported stuff since we only need the animation
             for obj in imported_objects:
                 obj.hide_set(True)
                 obj.hide_viewport = True
                 obj.hide_render = True
-            
+
             # Apply the imported animation to the selected armature
             animation_applied = False
-            
+
             for imported_armature in imported_armatures:
                 if imported_armature.animation_data and imported_armature.animation_data.action:
                     # Get the action from the imported armature
                     imported_action = imported_armature.animation_data.action
-                    
+
                     # Create a copy to avoid it being deleted when we remove the imported armature
                     new_action = imported_action.copy()
                     new_action.name = f"Imported_{imported_action.name}"
-                    
+
                     # Apply the action to the target armature as an NLA strip (Blender 4.0+ best practice)
                     if not target_armature.animation_data:
                         target_armature.animation_data_create()
@@ -198,19 +200,26 @@ class ImportAnimationGLTF(Operator):
                     except Exception:
                         pass
 
-                    logger.info("Applied animation '%s' to armature '%s' as NLA strip '%s' on track '%s' starting at frame %d", new_action.name, target_armature.name, new_strip.name, track_used.name, start_frame)
+                    logger.info(
+                        "Applied animation '%s' to armature '%s' as NLA strip '%s' on track '%s' starting at frame %d",
+                        new_action.name,
+                        target_armature.name,
+                        new_strip.name,
+                        track_used.name,
+                        start_frame,
+                    )
                     animation_applied = True
                     break
-            
+
             # Clean up the imported objects (we only needed the animation data)
             helpers.cleanup_imported_objects(imported_objects)
-            
+
             # Restore previous selection; we'll activate the target armature if import succeeded
             helpers.safe_deselect_all_objects(context)
             for obj in original_selected:
                 if obj.name in bpy.data.objects:  # Make sure object still exists
                     obj.select_set(True)
-            
+
             if animation_applied:
                 # Ensure the target armature is selected and active so the action slot is visible
                 if target_armature and target_armature.name in bpy.data.objects:
@@ -221,7 +230,7 @@ class ImportAnimationGLTF(Operator):
             else:
                 self.report({'WARNING'}, "No animation data found in the imported GLTF file")
                 return {'CANCELLED'}
-                
+
         except Exception as e:
             # Restore selection even if there's an error
             helpers.safe_deselect_all_objects(context)
@@ -230,6 +239,6 @@ class ImportAnimationGLTF(Operator):
                     obj.select_set(True)
             if original_active and original_active.name in bpy.data.objects:
                 context.view_layer.objects.active = original_active
-            
+
             self.report({'ERROR'}, f"Error importing animation: {str(e)}")
             return {'CANCELLED'}

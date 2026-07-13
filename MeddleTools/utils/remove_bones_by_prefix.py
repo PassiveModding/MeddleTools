@@ -10,6 +10,7 @@ try:
 except Exception:
     pass
 
+
 def remove_bones_by_prefix(armature_obj, prefix: str, context: bpy.types.Context = None) -> int:
     """Remove bones from the given armature whose names start with `prefix`.
 
@@ -102,21 +103,18 @@ def remove_bones_by_prefix(armature_obj, prefix: str, context: bpy.types.Context
 
 class RemoveBonesByPrefix(Operator):
     """Remove bones from an armature whose names start with a prefix"""
+
     bl_idname = "meddle.remove_bones_by_prefix"
     bl_label = "Remove Bones by Prefix"
     bl_description = "Remove bones whose names start with the given prefix from the active armature"
     bl_options = {'REGISTER', 'UNDO'}
 
     prefix: bpy.props.StringProperty(
-        name="Prefix",
-        description="Remove bones whose name starts with this prefix",
-        default=""
+        name="Prefix", description="Remove bones whose name starts with this prefix", default=""
     )
 
     armature_name: bpy.props.StringProperty(
-        name="Armature (optional)",
-        description="Name of armature to operate on (defaults to active object)",
-        default=""
+        name="Armature (optional)", description="Name of armature to operate on (defaults to active object)", default=""
     )
 
     def draw(self, context):

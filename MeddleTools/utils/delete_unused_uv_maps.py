@@ -1,4 +1,3 @@
-import bpy
 import logging
 from bpy.types import Operator
 
@@ -10,13 +9,15 @@ try:
 except Exception:
     pass
 
+
 class DeleteUnusedUvMaps(Operator):
     """Checks materials used by a mesh, deleting all uvmaps greater than the default which are not referenced"""
+
     bl_idname = "meddle.delete_unused_uvmaps"
     bl_label = "Delete Unused UV Maps"
     bl_description = "Delete unused UV maps from selected mesh objects that are not referenced by any material"
     bl_options = {'REGISTER', 'UNDO'}
-    
+
     def execute(self, context):
         # Get selected mesh objects
         selected_meshes = [obj for obj in context.selected_objects if obj.type == 'MESH']

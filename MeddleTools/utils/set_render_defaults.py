@@ -1,8 +1,6 @@
 import bpy
 import logging
 from bpy.types import Operator
-from collections import defaultdict
-from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
 logger = logging.getLogger(__name__)
@@ -12,8 +10,10 @@ try:
 except Exception:
     pass
 
+
 class SetCyclesDefaults(Operator):
     """Set default settings for Cycles render engine."""
+
     bl_idname = "meddle.set_cycles_defaults"
     bl_label = "Set Cycles Defaults"
     bl_description = "Set default settings for Cycles render engine"
@@ -32,8 +32,10 @@ class SetCyclesDefaults(Operator):
 
         return {'FINISHED'}
 
+
 class SetCameraCulling(Operator):
     """Set default settings for Camera Culling."""
+
     bl_idname = "meddle.set_camera_culling"
     bl_label = "Set Camera Culling"
     bl_description = "Set default settings for Camera Culling"
@@ -43,7 +45,7 @@ class SetCameraCulling(Operator):
         # Cycles
         bpy.context.scene.cycles.use_camera_cull = True
         bpy.context.scene.cycles.camera_cull_margin = 0.1
-        
+
         # get all objects and enable cycles.use_camera_cull
         for obj in bpy.context.scene.objects:
             if obj.type == 'MESH':

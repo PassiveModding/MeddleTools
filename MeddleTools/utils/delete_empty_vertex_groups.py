@@ -1,4 +1,3 @@
-import bpy
 import logging
 from bpy.types import Operator
 from . import helpers
@@ -11,8 +10,10 @@ try:
 except Exception:
     pass
 
+
 class DeleteEmptyVertexGroups(Operator):
     """Delete vertex groups that have no vertex weights from selected mesh objects"""
+
     bl_idname = "meddle.delete_empty_vertex_groups"
     bl_label = "Delete Empty Vertex Groups"
     bl_description = "Remove vertex groups from selected mesh objects that have no vertices assigned (weight == 0)"

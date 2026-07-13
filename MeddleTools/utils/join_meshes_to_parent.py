@@ -1,7 +1,6 @@
 import bpy
 import logging
 from bpy.types import Operator
-from collections import defaultdict
 from . import helpers
 
 # Module logger - operators still use self.report for user-facing messages
@@ -12,14 +11,18 @@ try:
 except Exception:
     pass
 
+
 class JoinMeshesToParent(Operator):
     """Join selected mesh objects into their mesh parent to reduce object count.
     For mesh parents: children are joined into the parent (original behavior).
     For non-mesh parents: mesh children are joined together (parent left as-is).
     """
+
     bl_idname = "meddle.join_meshes_to_parent"
     bl_label = "Join Meshes to Parent"
-    bl_description = "Join selected mesh children into their parent (if parent is a mesh) or merge siblings if parent is not a mesh"
+    bl_description = (
+        "Join selected mesh children into their parent (if parent is a mesh) or merge siblings if parent is not a mesh"
+    )
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -54,19 +57,19 @@ class JoinMeshesToParent(Operator):
         # Get all selected objects and group by parent with depth info
         all_selected = get_all_selected_objects()
         parent_groups = {}
-        
+
         for obj in all_selected:
             if not is_object_valid(obj):
                 continue
-                
+
             parent = obj.parent
             if parent:
                 if parent not in parent_groups:
                     parent_groups[parent] = {'meshes': [], 'non_meshes': [], 'depth': 0}
-                
+
                 depth = get_object_depth(obj)
                 parent_groups[parent]['depth'] = max(parent_groups[parent]['depth'], depth)
-                
+
                 if obj.type == 'MESH':
                     parent_groups[parent]['meshes'].append(obj)
                 else:
@@ -80,7 +83,6 @@ class JoinMeshesToParent(Operator):
         sorted_groups = sorted(parent_groups.items(), key=lambda x: x[1]['depth'], reverse=True)
 
         total_joined = 0
-        original_active = context.view_layer.objects.active
 
         for parent, group_data in sorted_groups:
             try:
@@ -94,8 +96,9 @@ class JoinMeshesToParent(Operator):
 
                 # Skip if we have non-mesh children at this level (they block joining)
                 if non_meshes:
-                    logger.info("Skipping join for parent '%s' due to %d non-mesh children", 
-                              parent.name, len(non_meshes))
+                    logger.info(
+                        "Skipping join for parent '%s' due to %d non-mesh children", parent.name, len(non_meshes)
+                    )
                     continue
 
                 # For mesh parents: join if we have any mesh children (1 or more)
@@ -106,8 +109,12 @@ class JoinMeshesToParent(Operator):
                     min_required = 2
 
                 if len(meshes) < min_required:
-                    logger.debug("Not enough mesh children for parent '%s' (need %d, have %d), skipping", 
-                               parent.name, min_required, len(meshes))
+                    logger.debug(
+                        "Not enough mesh children for parent '%s' (need %d, have %d), skipping",
+                        parent.name,
+                        min_required,
+                        len(meshes),
+                    )
                     continue
 
                 # Determine if we should join to parent or among siblings
@@ -123,29 +130,40 @@ class JoinMeshesToParent(Operator):
                     # Join mesh children together
                     objects_to_join = meshes
                     target_object = meshes[0]
-                    logger.info("Joining %d mesh children together (non-mesh parent '%s')", 
-                              len(meshes), parent.name)
+                    logger.info("Joining %d mesh children together (non-mesh parent '%s')", len(meshes), parent.name)
 
                 # Perform the join operation
                 joined_count = self.perform_join(context, objects_to_join, target_object, parent)
                 if joined_count > 0:
                     total_joined += joined_count
-                    logger.info("JOIN COMPLETED: %d objects joined for parent '%s'", joined_count, self.safe_get_name(parent))
+                    logger.info(
+                        "JOIN COMPLETED: %d objects joined for parent '%s'", joined_count, self.safe_get_name(parent)
+                    )
 
                     # Check if this resulted in only one child, and if so, join to parent
-                    if (parent.type == 'MESH' and is_object_valid(parent) and 
-                        is_object_valid(target_object) and target_object != parent):
-                        
+                    if (
+                        parent.type == 'MESH'
+                        and is_object_valid(parent)
+                        and is_object_valid(target_object)
+                        and target_object != parent
+                    ):
                         # Count remaining children
-                        remaining_children = [child for child in parent.children 
-                                            if is_object_valid(child) and child.type == 'MESH']
-                        
+                        remaining_children = [
+                            child for child in parent.children if is_object_valid(child) and child.type == 'MESH'
+                        ]
+
                         if len(remaining_children) == 1:
                             logger.info("AUTO-JOIN: Only one child remains, joining to parent '%s'", parent.name)
-                            final_join_count = self.perform_join(context, [parent, remaining_children[0]], parent, parent)
+                            final_join_count = self.perform_join(
+                                context, [parent, remaining_children[0]], parent, parent
+                            )
                             if final_join_count > 0:
                                 total_joined += final_join_count
-                                logger.info("AUTO-JOIN COMPLETED: %d objects joined to parent '%s'", final_join_count, self.safe_get_name(parent))
+                                logger.info(
+                                    "AUTO-JOIN COMPLETED: %d objects joined to parent '%s'",
+                                    final_join_count,
+                                    self.safe_get_name(parent),
+                                )
 
             except Exception as e:
                 parent_name = self.safe_get_name(parent)
@@ -176,9 +194,8 @@ class JoinMeshesToParent(Operator):
         """Perform the actual join operation with proper error handling."""
         try:
             # Validate all objects before joining
-            valid_objects = [obj for obj in objects_to_join 
-                           if hasattr(obj, 'name') and obj.name in bpy.data.objects]
-            
+            valid_objects = [obj for obj in objects_to_join if hasattr(obj, 'name') and obj.name in bpy.data.objects]
+
             if len(valid_objects) < 2:
                 return 0
 
@@ -202,15 +219,16 @@ class JoinMeshesToParent(Operator):
 
             # Ensure object mode and attempt join
             helpers.ensure_object_mode(context, 'OBJECT')
-            
+
             # Log the join operation details
             object_names = [self.safe_get_name(obj) for obj in valid_objects]
             parent_name = self.safe_get_name(parent)
-            logger.info("JOINING: %d objects [%s] for parent '%s'", 
-                       len(valid_objects), ', '.join(object_names), parent_name)
-            
+            logger.info(
+                "JOINING: %d objects [%s] for parent '%s'", len(valid_objects), ', '.join(object_names), parent_name
+            )
+
             bpy.ops.object.join()
-            
+
             joined_count = len(valid_objects)
             logger.info("JOIN SUCCESS: %d objects merged successfully", joined_count)
             return joined_count
@@ -224,7 +242,7 @@ class JoinMeshesToParent(Operator):
     def reparent_children(self, objects_to_join, target_object):
         """Reparent children of objects that will be removed during join."""
         children_to_reparent = []
-        
+
         # Collect children that need reparenting
         for src in objects_to_join:
             if src == target_object:
@@ -232,7 +250,7 @@ class JoinMeshesToParent(Operator):
             try:
                 if not (hasattr(src, 'name') and src.name in bpy.data.objects):
                     continue
-                    
+
                 for child in list(src.children):
                     if not (hasattr(child, 'name') and child.name in bpy.data.objects):
                         continue
@@ -242,20 +260,19 @@ class JoinMeshesToParent(Operator):
                         continue
                     if child.parent == target_object:
                         continue
-                    
+
                     children_to_reparent.append((child, child.matrix_world.copy()))
             except (ReferenceError, AttributeError):
                 continue
             except Exception:
-                logger.debug("Error collecting children for reparenting from object '%s'", 
-                           self.safe_get_name(src))
-        
+                logger.debug("Error collecting children for reparenting from object '%s'", self.safe_get_name(src))
+
         # Reparent collected children
         for child, original_matrix in children_to_reparent:
             try:
                 if not (hasattr(child, 'name') and child.name in bpy.data.objects):
                     continue
-                    
+
                 child.parent = target_object
                 child.matrix_parent_inverse = target_object.matrix_world.inverted() @ original_matrix
                 child.matrix_world = original_matrix
@@ -270,13 +287,13 @@ class JoinMeshesToParent(Operator):
             bpy.ops.object.select_all(action='DESELECT')
         except Exception:
             helpers.safe_deselect_all_objects(context)
-        
-        if (context.view_layer.objects.active and 
-            hasattr(context.view_layer.objects.active, 'name') and
-            context.view_layer.objects.active.name in bpy.data.objects):
+
+        if (
+            context.view_layer.objects.active
+            and hasattr(context.view_layer.objects.active, 'name')
+            and context.view_layer.objects.active.name in bpy.data.objects
+        ):
             try:
                 context.view_layer.objects.active.select_set(True)
             except Exception:
                 pass
-        
-        
