@@ -2,9 +2,11 @@ import bpy
 from os import path
 
 from .node_setup import node_configs
+from .node_setup import grass_setup
 from . import blend_import
 from . import lighting
 from . import preferences
+from . import utils
 
 
 def getRootObject(obj: bpy.types.Object) -> bpy.types.Object:
@@ -83,6 +85,12 @@ def setCollection(obj: bpy.types.Object, context: bpy.types.Context):
     if checkObj.name.startswith("Terrain_"):
         addToGroup(obj, "Terrain", context)
 
+    if checkObj.name.startswith("Grass_"):
+        addToGroup(obj, "Grass", context)
+
+    if checkObj.name.startswith("GrassBlades_"):
+        addToGroup(obj, "GrassBlades", context)
+
     return {'FINISHED'}
 
 
@@ -131,6 +139,8 @@ class ModelImport(bpy.types.Operator):
         header.label(text="Pipeline")
         if body:
             body.prop(self, 'import_select_created_objects')
+            body.prop(self, 'auto_remove_empty_vertex_groups')
+            body.prop(self, 'auto_clean_bone_hierarchy')
 
     def get_gltf_import_kwargs(self):
         return {key: getattr(self, key) for key in preferences.GLTF_IMPORT_OPTION_KEYS}
@@ -144,7 +154,7 @@ class ModelImport(bpy.types.Operator):
         # properties) win over the preference defaults.
         prefs = preferences.get_addon_preferences(context)
         if prefs is not None:
-            for key in preferences.GLTF_IMPORT_OPTION_KEYS:
+            for key in preferences.GLTF_IMPORT_OPTION_KEYS + preferences.MEDDLE_IMPORT_OPTION_KEYS:
                 if not self.properties.is_property_set(key):
                     setattr(self, key, getattr(prefs, key))
 
@@ -303,6 +313,24 @@ class ModelImport(bpy.types.Operator):
         # Process imported meshes
         imported_meshes = [obj for obj in newly_imported if obj.type == 'MESH']
 
+        if self.auto_remove_empty_vertex_groups and imported_meshes:
+            try:
+                removed = utils.remove_empty_vertex_groups(imported_meshes)
+                if removed:
+                    print(f"Removed {removed} empty vertex group(s) from imported meshes")
+            except Exception as e:
+                print(f"Error removing empty vertex groups: {e}")
+
+        if self.auto_clean_bone_hierarchy:
+            imported_armatures = [obj for obj in newly_imported if obj.type == 'ARMATURE']
+            if imported_armatures:
+                try:
+                    removed = utils.clean_bone_hierarchy(imported_armatures, context)
+                    if removed:
+                        print(f"Removed {removed} unused bone(s) from imported armature(s)")
+                except Exception as e:
+                    print(f"Error cleaning bone hierarchy: {e}")
+
         # Calculate granular progress increment for each mesh
         # Progress goes from chunk_mid to chunk_end over all meshes
 
@@ -345,6 +373,16 @@ class ModelImport(bpy.types.Operator):
             except Exception as e:
                 print(f"Error setting up light {light.name}: {e}")
 
+        # Process imported grass blade point clouds
+        for grass_obj in newly_imported:
+            if not grass_setup.is_grass_blade_object(grass_obj):
+                continue
+
+            try:
+                grass_setup.setup_grass_blades(grass_obj, cache_dir, context)
+            except Exception as e:
+                print(f"Error setting up grass blades {grass_obj.name}: {e}")
+
         # Set collections for all imported objects
         for obj in newly_imported:
             try:
@@ -355,9 +393,11 @@ class ModelImport(bpy.types.Operator):
         return len(imported_meshes)
 
 
-# Inject the shared glTF import option properties (single definition in
-# preferences.py) so register_class picks them up on this operator too.
+# Inject the shared glTF and Meddle-specific import option properties (single
+# definitions in preferences.py) so register_class picks them up on this operator too.
 for _name, _prop in preferences.gltf_import_option_defs().items():
+    ModelImport.__annotations__[_name] = _prop
+for _name, _prop in preferences.meddle_import_option_defs().items():
     ModelImport.__annotations__[_name] = _prop
 
 
@@ -396,6 +436,14 @@ class ApplyToSelected(bpy.types.Operator):
                 node_configs.map_mesh(material, slots, self.directory)
             except Exception as e:
                 print(f"Error mapping material {material.name}: {e}")
+
+        for obj in selected_objects:
+            if not grass_setup.is_grass_blade_object(obj):
+                continue
+            try:
+                grass_setup.setup_grass_blades(obj, self.directory, context)
+            except Exception as e:
+                print(f"Error setting up grass blades {obj.name}: {e}")
 
         return {'FINISHED'}
 

@@ -177,6 +177,20 @@ node_group_configs = {
         # A-?
         # PENDING: Fix detail influence for terrain, currently borked
     ],
+    "meddle bg.shpk UV Scale": [
+        VectorMapping('g_ColorUVScale', 'g_ColorUVScale0', 3),
+        VectorMapping('g_ColorUVScale', 'g_ColorUVScale1', 3, 2),
+        VectorMapping('g_NormalUVScale', 'g_NormalUVScale0', 3),
+        VectorMapping('g_NormalUVScale', 'g_NormalUVScale1', 3, 2),
+        VectorMapping('g_SpecularUVScale', 'g_SpecularUVScale0', 3),
+        VectorMapping('g_SpecularUVScale', 'g_SpecularUVScale1', 3, 2),
+        FloatMapping('0xB8ACCE58', 'FadeNear0', 0),
+        FloatMapping('0xB8ACCE58', 'FadeFar0', 1),
+        FloatMapping('0xB8ACCE58', 'FadeNear1', 2),
+        FloatMapping('0xB8ACCE58', 'FadeFar1', 3),
+        # Don't know the name for this one, but 0x88A3965A is the default 'no jitter', the other 3 possible values enable it
+        MaterialKeyMapping('0x36F72D5F', '0x88A3965A', 'JitterEnable', False),
+    ],
     "meddle water.shpk": [
         ColorMapping('g_RefractionColor', 'g_RefractionColor'),
         ColorMapping('g_WhitecapColor', 'g_WhitecapColor'),
@@ -376,6 +390,7 @@ def map_mesh(material: bpy.types.Material, slots: List[bpy.types.MaterialSlot], 
 
     setBackfaceCulling(material)
     setPngConfig(material, cache_directory)
+    setDecalToggle(material)
     setUvMapConfig(material)
     setGroupProperties(material)
     setColorAttributes(material)
@@ -495,6 +510,24 @@ def setPngConfig(material: bpy.types.Material, cache_directory: str):
         image.alpha_mode = config.alphaMode
         node.interpolation = config.interpolation
         node.extension = config.extension
+
+
+@profile_function
+def setDecalToggle(material: bpy.types.Material):
+    node_tree = material.node_tree
+    decal_node = next(
+        (node for node in node_tree.nodes if node.type == 'TEX_IMAGE' and node.label == 'Decal_PngCachePath'),
+        None,
+    )
+    if decal_node is None or decal_node.image is not None:
+        return
+
+    for node in node_tree.nodes:
+        if node.type != 'GROUP' or not node.node_tree:
+            continue
+        group_input = node.inputs.get('Enable Decal')
+        if group_input is not None:
+            group_input.default_value = False
 
 
 @profile_function

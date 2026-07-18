@@ -43,7 +43,7 @@ def gltf_import_option_defs():
                 'This option attempts to combine co-located vertices where possible. '
                 'Currently cannot combine verts with different normals'
             ),
-            default=False,
+            default=True,
         ),
         'import_merge_material_slots': bpy.props.BoolProperty(
             name='Merge Material Slot when possible',
@@ -107,6 +107,30 @@ def gltf_import_option_defs():
 GLTF_IMPORT_OPTION_KEYS = tuple(gltf_import_option_defs().keys())
 
 
+def meddle_import_option_defs():
+    """Property definitions for Meddle-specific post-import options.
+
+    Unlike gltf_import_option_defs(), these are not forwarded as kwargs to
+    bpy.ops.import_scene.gltf - they control extra processing steps the
+    import operator runs after the glTF itself has been imported.
+    """
+    return {
+        'auto_remove_empty_vertex_groups': bpy.props.BoolProperty(
+            name='Remove Empty Vertex Groups',
+            description='Automatically delete vertex groups with no weighted vertices from imported meshes',
+            default=False,
+        ),
+        'auto_clean_bone_hierarchy': bpy.props.BoolProperty(
+            name='Clean Bone Hierarchy',
+            description='Automatically remove bones from imported armatures that do not affect any vertices',
+            default=False,
+        ),
+    }
+
+
+MEDDLE_IMPORT_OPTION_KEYS = tuple(meddle_import_option_defs().keys())
+
+
 class MeddleAddonPreferences(bpy.types.AddonPreferences):
     """Add-on level preferences: persisted across sessions and .blend files."""
 
@@ -132,11 +156,16 @@ class MeddleAddonPreferences(bpy.types.AddonPreferences):
         )
         for key in GLTF_IMPORT_OPTION_KEYS:
             box.prop(self, key)
+        for key in MEDDLE_IMPORT_OPTION_KEYS:
+            box.prop(self, key)
 
 
-# The import option properties are defined once in gltf_import_option_defs();
-# inject them as annotations so register_class picks them up.
+# The import option properties are defined once in gltf_import_option_defs()
+# and meddle_import_option_defs(); inject them as annotations so
+# register_class picks them up.
 for _name, _prop in gltf_import_option_defs().items():
+    MeddleAddonPreferences.__annotations__[_name] = _prop
+for _name, _prop in meddle_import_option_defs().items():
     MeddleAddonPreferences.__annotations__[_name] = _prop
 
 
