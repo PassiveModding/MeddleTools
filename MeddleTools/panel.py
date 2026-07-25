@@ -121,13 +121,6 @@ class MeddleUtilsPanel(bpy.types.Panel):
         row = col.row()
         row.operator(utils.InstanceMeshes.bl_idname, text='Instance Identical Meshes', icon='AUTOMERGE_ON')
 
-        # Material Operations section
-        box = layout.box()
-        col = box.column()
-        col.label(text="Material Operations", icon='MATERIAL')
-        row = col.row()
-        row.operator(utils.AddVoronoiTexture.bl_idname, text='Apply Voronoi to Selected', icon='TEXTURE')
-
         # Animation & Rigging section
         box = layout.box()
         col = box.column()
