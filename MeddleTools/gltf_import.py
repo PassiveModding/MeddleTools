@@ -96,11 +96,11 @@ def setCollection(obj: bpy.types.Object, context: bpy.types.Context):
 
 class ModelImport(bpy.types.Operator):
     bl_idname = "meddle.import_gltf"
-    bl_label = "Import Model"
+    bl_label = "Import Meddle Model"
     bl_description = "Import GLTF/GLB files exported from Meddle, automatically applying shaders"
-    bl_options = {'PRESET', 'UNDO'}
-    files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
-    directory: bpy.props.StringProperty(subtype='DIR_PATH')
+    bl_options = {'PRESET', 'UNDO', 'REGISTER'}
+    files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement, options={'SKIP_SAVE'})  # type: ignore
+    directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
 
     # The glTF import options (import_shading, bone_heuristic, ...) are defined
@@ -145,18 +145,21 @@ class ModelImport(bpy.types.Operator):
     def get_gltf_import_kwargs(self):
         return {key: getattr(self, key) for key in preferences.GLTF_IMPORT_OPTION_KEYS}
 
-    def invoke(self, context, event):
-        if context is None:
-            return {'CANCELLED'}
-
-        # Seed options from the add-on preferences. Options the user already
-        # changed this session (remembered by Blender as last-used operator
-        # properties) win over the preference defaults.
+    def seed_from_preferences(self, context):
         prefs = preferences.get_addon_preferences(context)
         if prefs is not None:
             for key in preferences.GLTF_IMPORT_OPTION_KEYS + preferences.MEDDLE_IMPORT_OPTION_KEYS:
                 if not self.properties.is_property_set(key):
                     setattr(self, key, getattr(prefs, key))
+
+    def invoke(self, context, event):  # type: ignore
+        if context is None:
+            return {'CANCELLED'}
+
+        self.seed_from_preferences(context)
+
+        if self.directory and len(self.files) > 0:
+            return context.window_manager.invoke_props_dialog(self, width=400)
 
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
@@ -164,6 +167,8 @@ class ModelImport(bpy.types.Operator):
     def execute(self, context):
         if context is None:
             return {'CANCELLED'}
+
+        self.seed_from_preferences(context)
 
         # Prepare the import queue
         import_queue = []
@@ -452,4 +457,15 @@ def menu_func_import(self, context):
     self.layout.operator(ModelImport.bl_idname, text="Meddle Model (.gltf/.glb)", icon='IMPORT')
 
 
-classes = [ModelImport, ApplyToSelected]
+class MEDDLE_FH_import_gltf(bpy.types.FileHandler):
+    bl_idname = "MEDDLE_FH_import_gltf"
+    bl_label = "Meddle Model"
+    bl_import_operator = ModelImport.bl_idname
+    bl_file_extensions = ".gltf;.glb"
+
+    @classmethod
+    def poll_drop(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
+
+
+classes = [ModelImport, ApplyToSelected, MEDDLE_FH_import_gltf]
