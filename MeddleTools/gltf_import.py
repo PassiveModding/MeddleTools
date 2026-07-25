@@ -129,6 +129,7 @@ class ModelImport(bpy.types.Operator):
                 body.prop(self, 'guess_original_bind_pose')
                 body.prop(self, 'disable_bone_shape')
                 body.prop(self, 'bone_shape_scale_factor')
+            body.prop(self, 'auto_fix_oversized_bones')
 
         header, body = layout.panel("MEDDLE_import_texture", default_closed=False)
         header.label(text="Texture")
@@ -326,15 +327,30 @@ class ModelImport(bpy.types.Operator):
             except Exception as e:
                 print(f"Error removing empty vertex groups: {e}")
 
-        if self.auto_clean_bone_hierarchy:
+        if self.auto_clean_bone_hierarchy or self.auto_fix_oversized_bones:
             imported_armatures = [obj for obj in newly_imported if obj.type == 'ARMATURE']
-            if imported_armatures:
+
+            if self.auto_clean_bone_hierarchy and imported_armatures:
                 try:
                     removed = utils.clean_bone_hierarchy(imported_armatures, context)
                     if removed:
                         print(f"Removed {removed} unused bone(s) from imported armature(s)")
                 except Exception as e:
                     print(f"Error cleaning bone hierarchy: {e}")
+
+            if self.auto_fix_oversized_bones and imported_armatures:
+                try:
+                    settings = context.scene.meddle_settings
+                    fixed = utils.fix_oversized_bone_display(
+                        imported_armatures,
+                        context,
+                        threshold_multiplier=settings.bone_oversized_threshold,
+                        target_multiplier=settings.bone_oversized_target,
+                    )
+                    if fixed:
+                        print(f"Scaled down {fixed} oversized bone(s) on imported armature(s)")
+                except Exception as e:
+                    print(f"Error fixing oversized bone display: {e}")
 
         # Calculate granular progress increment for each mesh
         # Progress goes from chunk_mid to chunk_end over all meshes

@@ -134,6 +134,12 @@ class MeddleUtilsPanel(bpy.types.Panel):
         col.label(text="Animation & Rigging", icon='ARMATURE_DATA')
         row = col.row()
         row.operator(utils.ImportAnimationGLTF.bl_idname, text='Import Animation GLTF', icon='IMPORT')
+        row = col.row()
+        row.prop(props, 'bone_oversized_threshold', text='Oversized Threshold')
+        row = col.row()
+        row.prop(props, 'bone_oversized_target', text='Target Size')
+        row = col.row()
+        row.operator(utils.FixOversizedBones.bl_idname, text='Fix Oversized Bone Display', icon='BONE_DATA')
 
         # Render section
         box = layout.box()

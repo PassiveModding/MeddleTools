@@ -13,6 +13,7 @@ from .delete_unused_uv_maps import DeleteUnusedUvMaps
 from .remove_bones_by_prefix import RemoveBonesByPrefix
 from .set_render_defaults import SetCyclesDefaults, SetCameraCulling
 from .reparent_to_empty import ReparentToEmpty
+from .fix_bone_display_scale import FixOversizedBones, fix_oversized_bone_display
 
 
 classes = [
@@ -32,4 +33,5 @@ classes = [
     SetCameraCulling,
     InstanceMeshes,
     ReparentToEmpty,
+    FixOversizedBones,
 ]

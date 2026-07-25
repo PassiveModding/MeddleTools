@@ -125,6 +125,14 @@ def meddle_import_option_defs():
             description='Automatically remove bones from imported armatures that do not affect any vertices',
             default=False,
         ),
+        'auto_fix_oversized_bones': bpy.props.BoolProperty(
+            name='Fix Oversized Bone Display',
+            description=(
+                'Automatically scale down bones on imported armatures that are disproportionately long. '
+                'Does not affect deformation'
+            ),
+            default=False,
+        ),
     }
 
 
@@ -199,6 +207,22 @@ class MeddleSettings(bpy.types.PropertyGroup):
         description="Path to the animation GLTF file to import",
         default="",
         subtype='FILE_PATH',
+    )
+
+    bone_oversized_threshold: bpy.props.FloatProperty(
+        name="Oversized Threshold",
+        description="Bones longer than this multiple of the armature's median bone length are considered oversized",
+        default=10.0,
+        min=1.0,
+        max=50.0,
+    )
+
+    bone_oversized_target: bpy.props.FloatProperty(
+        name="Target Size",
+        description="Oversized bones are scaled down to this multiple of the armature's median bone length",
+        default=1.5,
+        min=1.0,
+        max=50.0,
     )
 
 
