@@ -43,7 +43,7 @@ def gltf_import_option_defs():
                 'This option attempts to combine co-located vertices where possible. '
                 'Currently cannot combine verts with different normals'
             ),
-            default=False,
+            default=True,
         ),
         'import_merge_material_slots': bpy.props.BoolProperty(
             name='Merge Material Slot when possible',
@@ -107,6 +107,38 @@ def gltf_import_option_defs():
 GLTF_IMPORT_OPTION_KEYS = tuple(gltf_import_option_defs().keys())
 
 
+def meddle_import_option_defs():
+    """Property definitions for Meddle-specific post-import options.
+
+    Unlike gltf_import_option_defs(), these are not forwarded as kwargs to
+    bpy.ops.import_scene.gltf - they control extra processing steps the
+    import operator runs after the glTF itself has been imported.
+    """
+    return {
+        'auto_remove_empty_vertex_groups': bpy.props.BoolProperty(
+            name='Remove Empty Vertex Groups',
+            description='Automatically delete vertex groups with no weighted vertices from imported meshes',
+            default=False,
+        ),
+        'auto_clean_bone_hierarchy': bpy.props.BoolProperty(
+            name='Clean Bone Hierarchy',
+            description='Automatically remove bones from imported armatures that do not affect any vertices',
+            default=False,
+        ),
+        'auto_fix_oversized_bones': bpy.props.BoolProperty(
+            name='Fix Oversized Bone Display',
+            description=(
+                'Automatically scale down bones on imported armatures that are disproportionately long. '
+                'Does not affect deformation'
+            ),
+            default=False,
+        ),
+    }
+
+
+MEDDLE_IMPORT_OPTION_KEYS = tuple(meddle_import_option_defs().keys())
+
+
 class MeddleAddonPreferences(bpy.types.AddonPreferences):
     """Add-on level preferences: persisted across sessions and .blend files."""
 
@@ -132,11 +164,16 @@ class MeddleAddonPreferences(bpy.types.AddonPreferences):
         )
         for key in GLTF_IMPORT_OPTION_KEYS:
             box.prop(self, key)
+        for key in MEDDLE_IMPORT_OPTION_KEYS:
+            box.prop(self, key)
 
 
-# The import option properties are defined once in gltf_import_option_defs();
-# inject them as annotations so register_class picks them up.
+# The import option properties are defined once in gltf_import_option_defs()
+# and meddle_import_option_defs(); inject them as annotations so
+# register_class picks them up.
 for _name, _prop in gltf_import_option_defs().items():
+    MeddleAddonPreferences.__annotations__[_name] = _prop
+for _name, _prop in meddle_import_option_defs().items():
     MeddleAddonPreferences.__annotations__[_name] = _prop
 
 
@@ -145,28 +182,6 @@ def get_addon_preferences(context=None):
     context = context or bpy.context
     addon = context.preferences.addons.get(__package__)
     return addon.preferences if addon else None
-
-
-class MaterialBakeSettings(bpy.types.PropertyGroup):
-    """Settings for individual material baking"""
-
-    material_name: bpy.props.StringProperty(name="Material Name", description="Name of the material", default="")
-
-    image_width: bpy.props.IntProperty(
-        name="Width", description="Width of the baked texture", default=2048, min=64, max=8192
-    )
-
-    image_height: bpy.props.IntProperty(
-        name="Height", description="Height of the baked texture", default=2048, min=64, max=8192
-    )
-
-    atlas_group: bpy.props.IntProperty(
-        name="Atlas Group",
-        description="Which atlas group this material belongs to (0 = auto-assign)",
-        default=0,
-        min=0,
-        max=32,
-    )
 
 
 class MeddleSettings(bpy.types.PropertyGroup):
@@ -194,43 +209,30 @@ class MeddleSettings(bpy.types.PropertyGroup):
         subtype='FILE_PATH',
     )
 
-    bake_samples: bpy.props.IntProperty(
-        name="Bake Samples", description="Number of samples to use when baking", default=4, min=1, max=4096
+    bone_oversized_threshold: bpy.props.FloatProperty(
+        name="Oversized Threshold",
+        description="Bones longer than this multiple of the armature's median bone length are considered oversized",
+        default=10.0,
+        min=1.0,
+        max=50.0,
     )
 
-    # Bake channel toggles
-    bake_diffuse: bpy.props.BoolProperty(name="Diffuse", description="Bake diffuse/base color channel", default=True)
-
-    bake_normal: bpy.props.BoolProperty(name="Normal", description="Bake normal map channel", default=True)
-
-    bake_roughness: bpy.props.BoolProperty(name="Roughness", description="Bake roughness channel", default=True)
-
-    bake_glossy: bpy.props.BoolProperty(name="Glossy", description="Bake glossy channel", default=False)
-
-    bake_transmission: bpy.props.BoolProperty(
-        name="Transmission", description="Bake transmission channel", default=False
-    )
-
-    bake_emission: bpy.props.BoolProperty(name="Emission", description="Bake emission channel", default=True)
-
-    material_bake_settings: bpy.props.CollectionProperty(
-        type=MaterialBakeSettings, name="Material Bake Settings", description="Per-material bake settings"
-    )
-
-    active_material_index: bpy.props.IntProperty(
-        name="Active Material Index", description="Currently selected material in the list", default=0
+    bone_oversized_target: bpy.props.FloatProperty(
+        name="Target Size",
+        description="Oversized bones are scaled down to this multiple of the armature's median bone length",
+        default=1.5,
+        min=1.0,
+        max=50.0,
     )
 
 
 def register():
     bpy.utils.register_class(MeddleAddonPreferences)
-    bpy.utils.register_class(MaterialBakeSettings)
     bpy.utils.register_class(MeddleSettings)
     bpy.types.Scene.meddle_settings = bpy.props.PointerProperty(type=MeddleSettings)
 
 
 def unregister():
     bpy.utils.unregister_class(MeddleSettings)
-    bpy.utils.unregister_class(MaterialBakeSettings)
     bpy.utils.unregister_class(MeddleAddonPreferences)
     del bpy.types.Scene.meddle_settings

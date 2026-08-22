@@ -11,6 +11,52 @@ except Exception:
     pass
 
 
+def remove_empty_vertex_groups(mesh_objects):
+    """Remove vertex groups with no weighted vertices from the given mesh objects.
+
+    Returns the total number of vertex groups removed.
+    """
+    total_removed = 0
+    for obj in mesh_objects:
+        removed_this_obj = 0
+
+        # Fast-path: if there are no vertex groups, skip
+        vg_count = len(obj.vertex_groups)
+        if vg_count == 0:
+            continue
+
+        # Build a boolean list marking which vertex groups have any weight > 0
+        # This iterates vertices only once (O(#vertices + #groups)) instead of
+        # checking every group against all vertices (O(#groups * #vertices)).
+        has_weight = [False] * vg_count
+        try:
+            mesh = obj.data
+            for v in mesh.vertices:
+                for g in v.groups:
+                    gi = g.group
+                    if 0 <= gi < vg_count and g.weight > 0.0:
+                        has_weight[gi] = True
+            # Collect groups to remove (use list to avoid mutating while iterating)
+            to_remove = [vg for vg in obj.vertex_groups if vg.index < vg_count and not has_weight[vg.index]]
+
+            for vg in to_remove:
+                try:
+                    obj.vertex_groups.remove(vg)
+                    removed_this_obj += 1
+                except Exception:
+                    # Ignore failures to remove a specific group
+                    pass
+        except Exception:
+            # If anything goes wrong accessing mesh data, skip this object defensively
+            removed_this_obj = 0
+
+        if removed_this_obj > 0:
+            logger.info("Removed %d empty vertex group(s) from '%s'", removed_this_obj, obj.name)
+        total_removed += removed_this_obj
+
+    return total_removed
+
+
 class DeleteEmptyVertexGroups(Operator):
     """Delete vertex groups that have no vertex weights from selected mesh objects"""
 
@@ -42,43 +88,7 @@ class DeleteEmptyVertexGroups(Operator):
             self.report({'WARNING'}, "No mesh objects selected")
             return {'CANCELLED'}
 
-        total_removed = 0
-        for obj in selected_meshes:
-            removed_this_obj = 0
-
-            # Fast-path: if there are no vertex groups, skip
-            vg_count = len(obj.vertex_groups)
-            if vg_count == 0:
-                continue
-
-            # Build a boolean list marking which vertex groups have any weight > 0
-            # This iterates vertices only once (O(#vertices + #groups)) instead of
-            # checking every group against all vertices (O(#groups * #vertices)).
-            has_weight = [False] * vg_count
-            try:
-                mesh = obj.data
-                for v in mesh.vertices:
-                    for g in v.groups:
-                        gi = g.group
-                        if 0 <= gi < vg_count and g.weight > 0.0:
-                            has_weight[gi] = True
-                # Collect groups to remove (use list to avoid mutating while iterating)
-                to_remove = [vg for vg in obj.vertex_groups if vg.index < vg_count and not has_weight[vg.index]]
-
-                for vg in to_remove:
-                    try:
-                        obj.vertex_groups.remove(vg)
-                        removed_this_obj += 1
-                    except Exception:
-                        # Ignore failures to remove a specific group
-                        pass
-            except Exception:
-                # If anything goes wrong accessing mesh data, skip this object defensively
-                removed_this_obj = 0
-
-            if removed_this_obj > 0:
-                logger.info("Removed %d empty vertex group(s) from '%s'", removed_this_obj, obj.name)
-            total_removed += removed_this_obj
+        total_removed = remove_empty_vertex_groups(selected_meshes)
 
         if total_removed > 0:
             self.report({'INFO'}, f"Removed {total_removed} empty vertex group(s) from selected meshes")

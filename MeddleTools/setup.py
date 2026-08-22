@@ -5,9 +5,9 @@ from . import gltf_import
 from . import version
 from . import preferences
 from . import utils
-from . import bake
+from . import bake2
 
-classes = [] + gltf_import.classes + panel.classes + blend_import.classes + utils.classes + bake.classes
+classes = [] + gltf_import.classes + panel.classes + blend_import.classes + utils.classes
 
 
 def register():
@@ -16,6 +16,7 @@ def register():
 
     # Register property groups
     preferences.register()
+    bake2.register()
     version.runInit()
 
     bpy.types.TOPBAR_MT_file_import.append(gltf_import.menu_func_import)
@@ -28,4 +29,5 @@ def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
 
+    bake2.unregister()
     preferences.unregister()

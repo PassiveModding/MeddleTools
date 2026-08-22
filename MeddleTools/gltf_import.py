@@ -2,9 +2,11 @@ import bpy
 from os import path
 
 from .node_setup import node_configs
+from .node_setup import grass_setup
 from . import blend_import
 from . import lighting
 from . import preferences
+from . import utils
 
 
 def getRootObject(obj: bpy.types.Object) -> bpy.types.Object:
@@ -83,16 +85,22 @@ def setCollection(obj: bpy.types.Object, context: bpy.types.Context):
     if checkObj.name.startswith("Terrain_"):
         addToGroup(obj, "Terrain", context)
 
+    if checkObj.name.startswith("Grass_"):
+        addToGroup(obj, "Grass", context)
+
+    if checkObj.name.startswith("GrassBlades_"):
+        addToGroup(obj, "GrassBlades", context)
+
     return {'FINISHED'}
 
 
 class ModelImport(bpy.types.Operator):
     bl_idname = "meddle.import_gltf"
-    bl_label = "Import Model"
+    bl_label = "Import Meddle Model"
     bl_description = "Import GLTF/GLB files exported from Meddle, automatically applying shaders"
-    bl_options = {'PRESET', 'UNDO'}
-    files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement)
-    directory: bpy.props.StringProperty(subtype='DIR_PATH')
+    bl_options = {'PRESET', 'UNDO', 'REGISTER'}
+    files: bpy.props.CollectionProperty(name="File Path Collection", type=bpy.types.OperatorFileListElement, options={'SKIP_SAVE'})  # type: ignore
+    directory: bpy.props.StringProperty(subtype='DIR_PATH', options={'SKIP_SAVE'})
     filter_glob: bpy.props.StringProperty(default='*.gltf;*.glb', options={'HIDDEN'})
 
     # The glTF import options (import_shading, bone_heuristic, ...) are defined
@@ -121,6 +129,7 @@ class ModelImport(bpy.types.Operator):
                 body.prop(self, 'guess_original_bind_pose')
                 body.prop(self, 'disable_bone_shape')
                 body.prop(self, 'bone_shape_scale_factor')
+            body.prop(self, 'auto_fix_oversized_bones')
 
         header, body = layout.panel("MEDDLE_import_texture", default_closed=False)
         header.label(text="Texture")
@@ -131,22 +140,27 @@ class ModelImport(bpy.types.Operator):
         header.label(text="Pipeline")
         if body:
             body.prop(self, 'import_select_created_objects')
+            body.prop(self, 'auto_remove_empty_vertex_groups')
+            body.prop(self, 'auto_clean_bone_hierarchy')
 
     def get_gltf_import_kwargs(self):
         return {key: getattr(self, key) for key in preferences.GLTF_IMPORT_OPTION_KEYS}
 
-    def invoke(self, context, event):
+    def seed_from_preferences(self, context):
+        prefs = preferences.get_addon_preferences(context)
+        if prefs is not None:
+            for key in preferences.GLTF_IMPORT_OPTION_KEYS + preferences.MEDDLE_IMPORT_OPTION_KEYS:
+                if not self.properties.is_property_set(key):
+                    setattr(self, key, getattr(prefs, key))
+
+    def invoke(self, context, event):  # type: ignore
         if context is None:
             return {'CANCELLED'}
 
-        # Seed options from the add-on preferences. Options the user already
-        # changed this session (remembered by Blender as last-used operator
-        # properties) win over the preference defaults.
-        prefs = preferences.get_addon_preferences(context)
-        if prefs is not None:
-            for key in preferences.GLTF_IMPORT_OPTION_KEYS:
-                if not self.properties.is_property_set(key):
-                    setattr(self, key, getattr(prefs, key))
+        self.seed_from_preferences(context)
+
+        if self.directory and len(self.files) > 0:
+            return context.window_manager.invoke_props_dialog(self, width=400)
 
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
@@ -154,6 +168,8 @@ class ModelImport(bpy.types.Operator):
     def execute(self, context):
         if context is None:
             return {'CANCELLED'}
+
+        self.seed_from_preferences(context)
 
         # Prepare the import queue
         import_queue = []
@@ -303,6 +319,39 @@ class ModelImport(bpy.types.Operator):
         # Process imported meshes
         imported_meshes = [obj for obj in newly_imported if obj.type == 'MESH']
 
+        if self.auto_remove_empty_vertex_groups and imported_meshes:
+            try:
+                removed = utils.remove_empty_vertex_groups(imported_meshes)
+                if removed:
+                    print(f"Removed {removed} empty vertex group(s) from imported meshes")
+            except Exception as e:
+                print(f"Error removing empty vertex groups: {e}")
+
+        if self.auto_clean_bone_hierarchy or self.auto_fix_oversized_bones:
+            imported_armatures = [obj for obj in newly_imported if obj.type == 'ARMATURE']
+
+            if self.auto_clean_bone_hierarchy and imported_armatures:
+                try:
+                    removed = utils.clean_bone_hierarchy(imported_armatures, context)
+                    if removed:
+                        print(f"Removed {removed} unused bone(s) from imported armature(s)")
+                except Exception as e:
+                    print(f"Error cleaning bone hierarchy: {e}")
+
+            if self.auto_fix_oversized_bones and imported_armatures:
+                try:
+                    settings = context.scene.meddle_settings
+                    fixed = utils.fix_oversized_bone_display(
+                        imported_armatures,
+                        context,
+                        threshold_multiplier=settings.bone_oversized_threshold,
+                        target_multiplier=settings.bone_oversized_target,
+                    )
+                    if fixed:
+                        print(f"Scaled down {fixed} oversized bone(s) on imported armature(s)")
+                except Exception as e:
+                    print(f"Error fixing oversized bone display: {e}")
+
         # Calculate granular progress increment for each mesh
         # Progress goes from chunk_mid to chunk_end over all meshes
 
@@ -345,6 +394,16 @@ class ModelImport(bpy.types.Operator):
             except Exception as e:
                 print(f"Error setting up light {light.name}: {e}")
 
+        # Process imported grass blade point clouds
+        for grass_obj in newly_imported:
+            if not grass_setup.is_grass_blade_object(grass_obj):
+                continue
+
+            try:
+                grass_setup.setup_grass_blades(grass_obj, cache_dir, context)
+            except Exception as e:
+                print(f"Error setting up grass blades {grass_obj.name}: {e}")
+
         # Set collections for all imported objects
         for obj in newly_imported:
             try:
@@ -355,9 +414,11 @@ class ModelImport(bpy.types.Operator):
         return len(imported_meshes)
 
 
-# Inject the shared glTF import option properties (single definition in
-# preferences.py) so register_class picks them up on this operator too.
+# Inject the shared glTF and Meddle-specific import option properties (single
+# definitions in preferences.py) so register_class picks them up on this operator too.
 for _name, _prop in preferences.gltf_import_option_defs().items():
+    ModelImport.__annotations__[_name] = _prop
+for _name, _prop in preferences.meddle_import_option_defs().items():
     ModelImport.__annotations__[_name] = _prop
 
 
@@ -397,6 +458,14 @@ class ApplyToSelected(bpy.types.Operator):
             except Exception as e:
                 print(f"Error mapping material {material.name}: {e}")
 
+        for obj in selected_objects:
+            if not grass_setup.is_grass_blade_object(obj):
+                continue
+            try:
+                grass_setup.setup_grass_blades(obj, self.directory, context)
+            except Exception as e:
+                print(f"Error setting up grass blades {obj.name}: {e}")
+
         return {'FINISHED'}
 
 
@@ -404,4 +473,15 @@ def menu_func_import(self, context):
     self.layout.operator(ModelImport.bl_idname, text="Meddle Model (.gltf/.glb)", icon='IMPORT')
 
 
-classes = [ModelImport, ApplyToSelected]
+class MEDDLE_FH_import_gltf(bpy.types.FileHandler):
+    bl_idname = "MEDDLE_FH_import_gltf"
+    bl_label = "Meddle Model"
+    bl_import_operator = ModelImport.bl_idname
+    bl_file_extensions = ".gltf;.glb"
+
+    @classmethod
+    def poll_drop(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D'
+
+
+classes = [ModelImport, ApplyToSelected, MEDDLE_FH_import_gltf]
